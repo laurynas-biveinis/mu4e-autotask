@@ -16,12 +16,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # mu4e requires Emacs 28.1+, so 27.x cannot be tested with a current
+        # mu4e even though the package's own code targets Emacs 27.1.
         emacs_version:
           - "snapshot"
           - "30.1"
           - "29.4"
           - "28.2"
-          - "27.1"
 
     permissions:
       contents: read
@@ -49,15 +50,31 @@ jobs:
 
       # mu4e is not an ELPA package; install mu so its Lisp is available.  The
       # Eask file locates the installed mu4e directory and adds it to load-path.
+      # The OS packages ship mu4e .elc byte-compiled for some other Emacs, which
+      # fails to load on a different version ("Invalid doc string").  Delete the
+      # .elc so Emacs loads the version-agnostic .el source, and export the
+      # located directory as MU4E_LISP_DIR (the Eask file's first candidate).
       - name: Install mu4e (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y mu4e
+          dir="$(dirname "$(dpkg -L mu4e | grep -m1 '/mu4e-message\.el$')")"
+          if [ ! -d "$dir" ]; then
+            dir="$(dirname "$(find /usr/share/emacs -name mu4e-message.el | head -1)")"
+          fi
+          echo "Found mu4e in: $dir"
+          sudo find "$dir" -name '*.elc' -delete
+          echo "MU4E_LISP_DIR=$dir" >>"$GITHUB_ENV"
 
       - name: Install mu4e (macOS)
         if: runner.os == 'macOS'
-        run: brew install mu
+        run: |
+          brew install mu
+          dir="$(brew --prefix mu)/share/emacs/site-lisp/mu/mu4e"
+          echo "Found mu4e in: $dir"
+          find "$dir" -name '*.elc' -delete
+          echo "MU4E_LISP_DIR=$dir" >>"$GITHUB_ENV"
 
       - name: Run tests
         env:
