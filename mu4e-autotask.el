@@ -333,10 +333,16 @@ Use the program named by `mu4e-autotask-open-file-command'."
   :documentation "Subject: field.")
  (body "" :read-only t :type string :documentation "Email body."))
 
-(defun mu4e-autotask--do-send-email (to success-fn)
-  "Ask to send an already filled-out email to TO, call SUCCESS-FN on success.
+;;;###autoload
+(defun mu4e-autotask-do-send-email (to success-fn)
+  "Ask to send the message in the current compose buffer, to TO.
 The \"To:\" field of the email must already be filled out; TO is used only for
-diagnostics.  SUCCESS-FN is called only on success."
+the confirmation prompt.  Call SUCCESS-FN only after the message is sent; on a
+declined send, discard the compose buffer and signal a `user-error'.
+
+This is the building block behind `mu4e-autotask-send-email', exposed for action
+functions that compose a message themselves (e.g. a forward or reply) and then
+want the same confirm-and-send behavior."
   (let ((subject (message-field-value "Subject")))
     (if (y-or-n-p
          (format "Send email to %s with subject %s? " to subject))
@@ -367,7 +373,7 @@ paths to attach.  SUCCESS-FN is called only after the message is sent."
     (insert (mu4e-autotask-email-template-body template))
     (dolist (attachment attachments)
       (mml-attach-file attachment))
-    (mu4e-autotask--do-send-email to success-fn)))
+    (mu4e-autotask-do-send-email to success-fn)))
 
 (provide 'mu4e-autotask)
 ;;; mu4e-autotask.el ends here

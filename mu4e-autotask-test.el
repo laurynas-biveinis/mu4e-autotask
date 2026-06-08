@@ -607,5 +607,35 @@ must suppress that and kill the buffer unconditionally, then signal `user-error'
          (mu4e-autotask-send-email tmpl nil #'ignore) :type 'user-error)))
     (should-not (buffer-live-p buf))))
 
+(ert-deftest mu4e-autotask-test-do-send-email-confirm ()
+  "`mu4e-autotask-do-send-email' confirms, wires SUCCESS-FN, and sends.
+This is the entry point for action functions that compose a message themselves
+and then want the same confirm-and-send behavior."
+  (let ((events nil)
+        (success (lambda () (push 'success events))))
+    (cl-letf (((symbol-function 'message-field-value) (lambda (_f) "Subj"))
+              ((symbol-function 'y-or-n-p) (lambda (_p) t))
+              ((symbol-function 'message-send-and-exit)
+               (lambda () (push 'send events))))
+      (with-temp-buffer
+        (mu4e-autotask-do-send-email "to@x" success)
+        (should (memq success message-sent-hook))))
+    (should (equal events '(send)))))
+
+(ert-deftest mu4e-autotask-test-do-send-email-decline ()
+  "Declining the send discards the compose buffer and signals `user-error'."
+  (let ((buf nil)
+        (sent nil))
+    (cl-letf (((symbol-function 'message-field-value) (lambda (_f) "Subj"))
+              ((symbol-function 'y-or-n-p) (lambda (_p) nil))
+              ((symbol-function 'message-send-and-exit)
+               (lambda () (setq sent t))))
+      (with-temp-buffer
+        (setq buf (current-buffer))
+        (should-error
+         (mu4e-autotask-do-send-email "to@x" #'ignore) :type 'user-error)))
+    (should-not sent)
+    (should-not (buffer-live-p buf))))
+
 (provide 'mu4e-autotask-test)
 ;;; mu4e-autotask-test.el ends here

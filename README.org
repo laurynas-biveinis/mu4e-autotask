@@ -178,3 +178,19 @@ Build a template and send it:
 =mu4e-autotask-send-email= switches to the template's mu4e context, composes the
 message, attaches the files, asks for confirmation, and calls the success
 function only after the message is sent.
+
+For action functions that compose a message themselves — a forward or a reply
+rather than a fresh template — use =mu4e-autotask-do-send-email=, the
+confirm-and-send building block that =mu4e-autotask-send-email= is built on.  It
+acts on the current compose buffer: it asks for confirmation (the =TO= argument
+is shown in the prompt), sends on yes and calls =SUCCESS-FN= afterwards, and on
+no discards the draft and signals a =user-error=.
+
+#+begin_src emacs-lisp
+(defun my-forward-to-accountant (_msg)
+  "Forward the current message to the accountant."
+  (mu4e-compose-forward)
+  (insert "accounting@example.com")
+  (mu4e-autotask-do-send-email "accounting@example.com"
+                               (lambda () (message "Forwarded"))))
+#+end_src
