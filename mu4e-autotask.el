@@ -48,10 +48,12 @@
 (require 'mu4e-contacts)
 (require 'mu4e-helpers)
 (require 'mu4e-message)
-(require 'mu4e-mime-parts)
 (require 'mu4e-context)
 (require 'mu4e-compose)
 (require 'mu4e-draft)
+;; `mu4e-view' provides `mu4e-view-actions' and pulls in `mu4e-view-mime-parts'.
+;; Depend on it rather than the internal `mu4e-mime-parts' file, which older mu4e
+;; versions do not ship.
 (require 'mu4e-view)
 
 ;;; Customization
