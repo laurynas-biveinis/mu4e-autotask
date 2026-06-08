@@ -78,7 +78,7 @@ jobs:
 
       - name: Run tests
         env:
-          EMACS_TEST_JUNIT_REPORT: ${{ matrix.emacs_version != 'snapshot' && 'mu4e-autotask-test.xml' || '' }}
+          EMACS_TEST_JUNIT_REPORT: ${{ matrix.emacs_version != '28.2' && 'mu4e-autotask-test.xml' || '' }}
         run: |
           eask clean all
           eask package
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: matrix.emacs_version != 'snapshot'
+        if: matrix.emacs_version != '28.2'
         with:
           name: test-results-${{ matrix.os }}-emacs-${{ matrix.emacs_version }}
           path: mu4e-autotask-test.xml
@@ -104,7 +104,7 @@ jobs:
         # test-reporter API call 403s.  Skip the step on fork PRs; tests and
         # artifact upload still run.
         if: >-
-          matrix.emacs_version != 'snapshot'
+          matrix.emacs_version != '28.2'
           && (github.event_name != 'pull_request'
               || github.event.pull_request.head.repo.full_name == github.repository)
         with:
