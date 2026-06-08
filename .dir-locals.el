@@ -1,0 +1,5 @@
+((emacs-lisp-mode . ((fill-column . 80)
+                     (indent-tabs-mode . nil)
+                     (sentence-end-double-space . t)
+                     (elisp-lint-indent-specs . ((mu4e-autotask-test--with-cleanup . 0)
+                                                 (cl-defstruct . nil))))))

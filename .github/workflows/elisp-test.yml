@@ -1,0 +1,96 @@
+name: Emacs Lisp CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        emacs_version:
+          - "snapshot"
+          - "30.1"
+          - "29.4"
+          - "28.2"
+          - "27.1"
+
+    permissions:
+      contents: read
+      packages: read
+      # To report GitHub Actions status checks
+      statuses: write
+      # To create test report checks
+      checks: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Emacs
+        uses: purcell/setup-emacs@master
+        with:
+          version: ${{ matrix.emacs_version }}
+
+      - name: Set up Eask
+        uses: emacs-eask/setup-eask@master
+        with:
+          version: "snapshot"
+
+      # mu4e is not an ELPA package; install mu so its Lisp is available.  The
+      # Eask file locates the installed mu4e directory and adds it to load-path.
+      - name: Install mu4e (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mu4e
+
+      - name: Install mu4e (macOS)
+        if: runner.os == 'macOS'
+        run: brew install mu
+
+      - name: Run tests
+        env:
+          EMACS_TEST_JUNIT_REPORT: ${{ matrix.emacs_version != 'snapshot' && 'mu4e-autotask-test.xml' || '' }}
+        run: |
+          eask clean all
+          eask package
+          eask install
+          eask compile
+          eask lint elisp-lint
+          eask lint keywords
+          eask lint regexps
+          eask run script test
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: matrix.emacs_version != 'snapshot'
+        with:
+          name: test-results-${{ matrix.os }}-emacs-${{ matrix.emacs_version }}
+          path: mu4e-autotask-test.xml
+          retention-days: 7
+
+      - name: Test Report
+        uses: dorny/test-reporter@v3 # zizmor: ignore[ref-confusion]
+        # Fork PRs cannot create check runs: GitHub withholds `checks: write`
+        # from GITHUB_TOKEN on pull_request events from forks, so the
+        # test-reporter API call 403s.  Skip the step on fork PRs; tests and
+        # artifact upload still run.
+        if: >-
+          matrix.emacs_version != 'snapshot'
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          name: Test Results - ${{ matrix.os }} - Emacs ${{ matrix.emacs_version }}
+          path: mu4e-autotask-test.xml
+          reporter: java-junit

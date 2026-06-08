@@ -1,0 +1,160 @@
+#+title: mu4e-autotask
+#+options: toc:nil
+
+Rule-based email automation for [[https://www.djcbsoftware.nl/code/mu/mu4e.html][mu4e]].
+
+=mu4e-autotask= dispatches incoming messages to action functions based on
+their sender and/or subject, and provides building blocks for writing those
+actions: helpers to read a message's raw text, MIME-part bodies, and
+attachments, plus a small templated outgoing-mail engine.
+
+* Requirements
+
+- Emacs 27.1 or newer.
+- mu4e.  It ships with [[https://www.djcbsoftware.nl/code/mu/][mu]] and is not an ELPA package, so it is not a
+  declared package dependency; install mu separately.
+
+* Installation
+
+Clone the repository and put it on your =load-path=, then:
+
+#+begin_src emacs-lisp
+(require 'mu4e-autotask)
+(mu4e-autotask-initialize)
+#+end_src
+
+=mu4e-autotask-initialize= adds an "Execute automation" entry to
+=mu4e-view-actions=; run it from a message view to dispatch that message.
+
+* Configuring rules
+
+Set =mu4e-autotask-rules= to a list of rules.  Each rule is a property list:
+
+- =:sender-exact= :: exact sender email address to match.
+- =:sender-match= :: regexp matched against the sender email address.
+- =:subject-exact= :: exact subject text to match.
+- =:subject-match= :: regexp matched against the subject.
+- =:action-fn= :: function called with the message when the rule matches.
+
+Only one of =:sender-exact= / =:sender-match= may be set per rule, and only one
+of =:subject-exact= / =:subject-match=.  A rule with no subject criteria matches
+any subject; a rule with no sender criteria never matches.  More than one rule
+matching the same message is an error: dispatch signals it without running any
+action.
+
+#+begin_src emacs-lisp
+(setq mu4e-autotask-rules
+      '((:sender-exact "notifications@github.com"
+         :subject-match "^.* Run failed.*$"
+         :action-fn my-handle-github-run-failed)
+        (:sender-exact "noreply@example.com"
+         :action-fn my-open-example-attachments)))
+#+end_src
+
+* Gating automation
+
+=mu4e-autotask-pre-action-hook= runs at the start of dispatch, before any rule
+action.  A function on it that signals an error aborts the dispatch.  For
+example, to require an active Org clock (via [[https://github.com/laurynas-biveinis/org-autotask][org-autotask]]) before any
+automation runs:
+
+#+begin_src emacs-lisp
+(add-hook 'mu4e-autotask-pre-action-hook #'org-autotask-require-org-clock)
+#+end_src
+
+* Helpers for action functions
+
+Reading the current message:
+
+- =(mu4e-autotask-raw-message MSG)= :: the raw message as a string.
+- =(mu4e-autotask-html-content)= / =(mu4e-autotask-text-content)= :: the
+  text/html and text/plain bodies.
+- =(mu4e-autotask-msg-content MIME-TYPE)= :: the body of the first part of a
+  given MIME type.  These three signal a =user-error= if the message has no part
+  of the requested type.
+- =(mu4e-autotask-csv-part)= / =(mu4e-autotask-pdf-part)= :: the first CSV / PDF
+  attachment part.
+- =(mu4e-autotask-save-csv-part)= / =(mu4e-autotask-save-part-file PART)= :: save
+  a part to disk and return its path.
+- =(mu4e-autotask-for-each-attachment FN)= :: call =FN= with the handle and
+  target path of each attachment.
+- =(mu4e-autotask-open-all-attachments SUFFIX)= :: save and open every
+  attachment whose file name ends with =SUFFIX=, using
+  =mu4e-autotask-open-file-command= (default ="open"=, the macOS opener).  Each
+  opened file is deleted =mu4e-autotask-open-delete-delay= seconds later
+  (default 1); raise it if a slow viewer needs longer to read the file.
+- =(mu4e-autotask-download-all-jpgs)= :: save all JPG attachments.
+
+** Example action functions
+
+An action function takes the mu4e message and runs in the message view, so the
+no-argument helpers above act on that same message.
+
+Open a URL parsed out of the raw message — e.g. a CI "run failed" notification:
+
+#+begin_src emacs-lisp
+(defun my-handle-github-run-failed (msg)
+  "Open the failed-run URL found in MSG."
+  (let ((raw (mu4e-autotask-raw-message msg)))
+    (if (string-match "https://github\\.com/[^ \t\n\"]+/runs/[0-9]+" raw)
+        (browse-url (match-string 0 raw))
+      (message "No run URL found"))))
+#+end_src
+
+Pull a link out of the decoded plain-text body instead of the raw message:
+
+#+begin_src emacs-lisp
+(defun my-open-document-share (_msg)
+  "Open the first link in the plain-text body of the current message."
+  (let ((text (mu4e-autotask-text-content)))
+    (if (string-match "https://[^ \t\n]+" text)
+        (browse-url (match-string 0 text))
+      (user-error "No link found in the message body"))))
+#+end_src
+
+Save a CSV attachment, hand it to an external converter, then clean up:
+
+#+begin_src emacs-lisp
+(defun my-import-statement (_msg)
+  "Convert the CSV attachment of the current message and import it."
+  (let ((csv (mu4e-autotask-save-csv-part)))
+    (call-process "csv2qif" nil nil nil csv)
+    (delete-file csv)))
+#+end_src
+
+Open every PDF attachment in its default application — e.g. invoices to review:
+
+#+begin_src emacs-lisp
+(defun my-open-example-attachments (_msg)
+  "Open every PDF attachment of the current message."
+  (mu4e-autotask-open-all-attachments ".pdf"))
+#+end_src
+
+Save all photo attachments:
+
+#+begin_src emacs-lisp
+(defun my-save-photos (_msg)
+  "Save every JPG attachment of the current message."
+  (mu4e-autotask-download-all-jpgs))
+#+end_src
+
+* Sending templated mail
+
+Build a template and send it:
+
+#+begin_src emacs-lisp
+(defconst my-invoice-email
+  (make-mu4e-autotask-email-template
+   :context "work-gmail"
+   :to "accounting@example.com"
+   :subject "Invoice"
+   :body "Please find the invoice attached.\n"))
+
+(mu4e-autotask-send-email my-invoice-email
+                          '("/path/to/invoice.pdf")
+                          (lambda () (message "Invoice sent")))
+#+end_src
+
+=mu4e-autotask-send-email= switches to the template's mu4e context, composes the
+message, attaches the files, asks for confirmation, and calls the success
+function only after the message is sent.
