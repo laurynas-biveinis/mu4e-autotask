@@ -16,7 +16,27 @@ attachments, plus a small templated outgoing-mail engine.
 
 * Installation
 
-Clone the repository and put it on your =load-path=, then:
+mu4e-autotask is not on MELPA because it depends on mu4e, which is not an ELPA
+package.  Install it directly from this repository.
+
+On Emacs 29.1 or newer, use =package-vc-install=:
+
+#+begin_src emacs-lisp
+(package-vc-install "https://github.com/laurynas-biveinis/mu4e-autotask")
+#+end_src
+
+or interactively:
+
+: M-x package-vc-install RET https://github.com/laurynas-biveinis/mu4e-autotask RET
+
+On older Emacs, clone the repository and add it to your =load-path= manually:
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/mu4e-autotask")
+#+end_src
+
+Either way, mu4e must already be installed and on the =load-path= (it ships with
+mu).  Then enable the package:
 
 #+begin_src emacs-lisp
 (require 'mu4e-autotask)
