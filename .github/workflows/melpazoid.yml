@@ -1,0 +1,38 @@
+# melpazoid <https://github.com/riscy/melpazoid> build checks.
+
+name: melpazoid
+on: [push, pull_request]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y emacs && emacs --version
+          # mu4e need not be installed here: melpazoid detects the mu4e-* recipe
+          # name and apt-installs mu4e inside its own Docker build container,
+          # where the package's (require 'mu4e-...) byte-compilation runs.
+          git clone https://github.com/riscy/melpazoid.git ~/melpazoid
+      - name: Run
+        env:
+          LOCAL_REPO: ${{ github.workspace }}
+          RECIPE: |
+            (mu4e-autotask :fetcher github :repo "laurynas-biveinis/mu4e-autotask")
+          # false: melpazoid warnings do not fail the build.
+          WARN_IS_ERROR: false
+          # false: package is not (yet) on MELPA.
+          EXIST_OK: false
+        run: echo "$GITHUB_REF" && make -C ~/melpazoid
