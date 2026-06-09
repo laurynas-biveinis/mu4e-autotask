@@ -22,10 +22,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y emacs && emacs --version
-          # mu4e need not be installed here: melpazoid detects the mu4e-* recipe
-          # name and apt-installs mu4e inside its own Docker build container,
-          # where the package's (require 'mu4e-...) byte-compilation runs.
           git clone https://github.com/riscy/melpazoid.git ~/melpazoid
+          # mu4e is not an ELPA package, and melpazoid's container installs Emacs
+          # from a PPA whose emacs-gtk Breaks the dh-elpa-helper the distro mu4e
+          # depends on, so melpazoid's built-in mu4e-* native-dep install fails
+          # (silently, via its `|| :`).  Provide mu4e ourselves: download a recent
+          # mu4e .deb -- download only, so no dependency resolution and thus no
+          # conflict -- extract its Elisp, and drop it on the container's default
+          # load-path so the package's (require 'mu4e-...) forms byte-compile.
+          # That target (/usr/local/share/emacs/site-lisp/) is on load-path only
+          # because melpazoid's CMD passes --no-site-file, not --no-site-lisp.
+          # Pinned version may need bumping when it rotates out of the pool; the
+          # elpa-src/mu4e-* internal layout may also change with it.
+          # melpazoid is cloned at HEAD, so guard the insertion anchor: require
+          # exactly one `ENV WORKSPACE` line, failing loudly if an upstream
+          # Dockerfile change removes it (the injection would be silently skipped
+          # and fail later in the byte-compile with an opaque (require 'mu4e-...)
+          # error) or duplicates it (the RUN would be injected more than once).
+          # The anchor is a single shared variable so the guard and the sed
+          # cannot drift apart.
+          anchor='^ENV WORKSPACE '
+          [ "$(grep -c "$anchor" ~/melpazoid/docker/Dockerfile)" -eq 1 ] || { echo 'melpazoid Dockerfile must contain exactly one ENV WORKSPACE line; review mu4e workaround' >&2; exit 1; }
+          sed -i "/$anchor/i RUN wget -q --tries=3 --timeout=30 --retry-connrefused -P /opt https://archive.ubuntu.com/ubuntu/pool/universe/m/maildir-utils/mu4e_1.12.14-1_all.deb && dpkg-deb -x /opt/mu4e_*.deb /opt/mu4e && cp /opt/mu4e/usr/share/emacs/site-lisp/elpa-src/mu4e-*/*.el /usr/local/share/emacs/site-lisp/" ~/melpazoid/docker/Dockerfile
       - name: Run
         env:
           LOCAL_REPO: ${{ github.workspace }}
