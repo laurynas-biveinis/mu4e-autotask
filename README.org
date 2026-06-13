@@ -107,6 +107,13 @@ a declared package dependency.  Declined invitations never create events.
           '("~/org/gcal-personal.org" . "me@gmail.com"))))
 #+end_src
 
+This handler is independent of mu4e's own =mu4e-icalendar=, which you do not
+need to load; if you load it anyway for its Accept / Tentative / Decline buttons
+in the message view, those buttons reply through a separate path.  The two do
+not interfere, but acting on both sends the organizer two RSVPs, and, if both
+are set up to record, stores the event twice — once in =mu4e-icalendar='s diary
+or Org capture and once in org-gcal.
+
 * Helpers for action functions
 
 Reading the current message:
