@@ -31,7 +31,10 @@
 
 (source "gnu")
 
-(depends-on "emacs" "27.1")
+;; Emacs 29.1+: the built-in calendar-invitation handling relies on
+;; gnus-icalendar's uninvited-attendee ("party crasher") RSVP fallback, added
+;; in Emacs 29.1.
+(depends-on "emacs" "29.1")
 
 ;; mu4e is not an ELPA package; it ships with mu.  Locate its installed Lisp
 ;; directory and add it to `load-path' so byte-compilation, linting, and tests

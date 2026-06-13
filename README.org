@@ -10,7 +10,7 @@ attachments, plus a small templated outgoing-mail engine.
 
 * Requirements
 
-- Emacs 27.1 or newer.
+- Emacs 29.1 or newer.
 - mu4e.  It ships with [[https://www.djcbsoftware.nl/code/mu/][mu]] and is not an ELPA package, so it is not a
   declared package dependency; install mu separately.
 
@@ -80,6 +80,31 @@ automation runs:
 
 #+begin_src emacs-lisp
 (add-hook 'mu4e-autotask-pre-action-hook #'org-autotask-require-org-clock)
+#+end_src
+
+* Calendar invites
+
+When =mu4e-autotask-handle-icalendar= is non-nil (the default), dispatching a
+message that mu flagged =calendar= and that no rule matched runs the built-in
+invitation handler: it prompts for accept / tentative / decline, composes the
+iTIP reply to the meeting organizer, and asks for confirmation before sending,
+like any other automation send.  Explicit rules always take precedence over
+the built-in handler.  Set it to nil to disable invitation handling.
+
+To also record accepted and tentative invitations in a Google Calendar via
+[[https://github.com/kidd/org-gcal.el][org-gcal]], set =mu4e-autotask-icalendar-event-target-function= to a function
+that receives the message plist and returns a cons =(ORG-FILE . CALENDAR-ID)=:
+the org-gcal file the event entry is appended to, and the Google calendar id
+(the calendar's email-address form) it is posted to.  Return nil to skip event
+creation for that message.  org-gcal is loaded only when this fires; it is not
+a declared package dependency.  Declined invitations never create events.
+
+#+begin_src emacs-lisp
+(setq mu4e-autotask-icalendar-event-target-function
+      (lambda (msg)
+        (if (string-prefix-p "/work/" (mu4e-message-field msg :maildir))
+            '("~/org/gcal-work.org" . "me@work.example.com")
+          '("~/org/gcal-personal.org" . "me@gmail.com"))))
 #+end_src
 
 * Helpers for action functions

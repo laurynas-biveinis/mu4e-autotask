@@ -16,13 +16,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # mu4e requires Emacs 28.1+, so 27.x cannot be tested with a current
-        # mu4e even though the package's own code targets Emacs 27.1.
         emacs_version:
           - "snapshot"
           - "30.1"
           - "29.4"
-          - "28.2"
 
     permissions:
       contents: read
@@ -78,7 +75,7 @@ jobs:
 
       - name: Run tests
         env:
-          EMACS_TEST_JUNIT_REPORT: ${{ matrix.emacs_version != '28.2' && 'mu4e-autotask-test.xml' || '' }}
+          EMACS_TEST_JUNIT_REPORT: mu4e-autotask-test.xml
         run: |
           eask clean all
           eask package
@@ -91,7 +88,6 @@ jobs:
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: matrix.emacs_version != '28.2'
         with:
           name: test-results-${{ matrix.os }}-emacs-${{ matrix.emacs_version }}
           path: mu4e-autotask-test.xml
@@ -104,9 +100,8 @@ jobs:
         # test-reporter API call 403s.  Skip the step on fork PRs; tests and
         # artifact upload still run.
         if: >-
-          matrix.emacs_version != '28.2'
-          && (github.event_name != 'pull_request'
-              || github.event.pull_request.head.repo.full_name == github.repository)
+          github.event_name != 'pull_request'
+          || github.event.pull_request.head.repo.full_name == github.repository
         with:
           name: Test Results - ${{ matrix.os }} - Emacs ${{ matrix.emacs_version }}
           path: mu4e-autotask-test.xml

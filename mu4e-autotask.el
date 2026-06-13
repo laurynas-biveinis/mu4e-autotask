@@ -5,7 +5,7 @@
 ;; Author: Laurynas Biveinis <laurynas.biveinis@gmail.com>
 ;; Version: 0.1
 ;; URL: https://github.com/laurynas-biveinis/mu4e-autotask
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: mail
 
 ;; This file is NOT part of GNU Emacs.
@@ -35,6 +35,12 @@
 ;; `mu4e-autotask-email-template' struct and `mu4e-autotask-send-email' for
 ;; composing and sending templated outgoing mail.
 ;;
+;; Calendar invitations (messages mu flags `calendar') that no rule matches
+;; are handled by a built-in RSVP flow when `mu4e-autotask-handle-icalendar'
+;; is non-nil: prompt for accept / tentative / decline, send the iTIP reply
+;; to the organizer, and optionally record the event in a Google Calendar via
+;; org-gcal (see `mu4e-autotask-icalendar-event-target-function').
+;;
 ;; mu4e itself is a runtime requirement; it ships with mu and is not an ELPA
 ;; package, so it is not listed in Package-Requires.
 
@@ -42,6 +48,12 @@
 
 (require 'cl-lib)
 (require 'seq)
+;; gnus-icalendar is a required built-in for the RSVP flow, unlike the
+;; optional third-party org-gcal which is loaded on demand: it is always
+;; present in the supported Emacs, and `gnus-icalendar-with-decoded-handle'
+;; is a macro that needs compile-time availability, so a deferred require
+;; would buy nothing and complicate byte-compilation.
+(require 'gnus-icalendar)
 (require 'mm-decode)
 (require 'mml)
 (require 'message)
@@ -86,6 +98,36 @@ error.  Every rule must supply an :action-fn."
       (:subject-exact string)
       (:subject-match string)
       (:action-fn function))))
+  :group 'mu4e-autotask)
+
+(defcustom mu4e-autotask-handle-icalendar t
+  "Whether to handle calendar invitations not matched by any rule.
+When non-nil, dispatching a message that mu flagged `calendar' and that no
+rule in `mu4e-autotask-rules' matched runs the built-in invitation handler:
+prompt for accept / tentative / decline, compose the iTIP reply to the
+meeting organizer, and confirm before sending."
+  :type 'boolean
+  :group 'mu4e-autotask)
+
+(defcustom mu4e-autotask-icalendar-event-target-function nil
+  "Function mapping an invitation message to its Google Calendar target.
+Called with the mu4e message plist; returns a cons (ORG-FILE . CALENDAR-ID):
+the org-gcal file the event entry is appended to and the Google calendar id
+\(the calendar's email-address form) it is posted to, or nil to skip event
+creation for that message.  When the variable itself is nil, the built-in
+invitation handler only sends the RSVP reply and never records events.
+Recording an event requires org-gcal, which is loaded on first use and is not
+a declared package dependency.  Declined invitations never create events.
+
+For example:
+
+  (setq mu4e-autotask-icalendar-event-target-function
+        (lambda (msg)
+          (if (string-prefix-p \"/work/\"
+                               (mu4e-message-field msg :maildir))
+              \\='(\"~/org/gcal-work.org\" . \"me@work.example.com\")
+            \\='(\"~/org/gcal-personal.org\" . \"me@gmail.com\"))))"
+  :type '(choice (const :tag "Do not record events" nil) function)
   :group 'mu4e-autotask)
 
 (defcustom mu4e-autotask-pre-action-hook nil
@@ -155,7 +197,12 @@ RULE is a plist containing either `:subject-exact' or `:subject-match'."
 aborts the dispatch.  Signal a `user-error', without running any action, if
 more than one rule matches.  Signal a `user-error' first if any rule in
 `mu4e-autotask-rules' sets conflicting match criteria, regardless of whether it
-would match MSG."
+would match MSG.  When no rule matches, MSG carries the mu `calendar' flag,
+and `mu4e-autotask-handle-icalendar' is non-nil, run the built-in calendar
+invitation handler instead.
+Call this from a `mu4e-view-mode' or `mu4e-headers-mode' buffer, as the
+`mu4e-view-actions' entry does: the calendar invitation handler replies via
+`mu4e-compose-reply-to', which needs the message at point."
   (mapc #'mu4e-autotask--validate-rule mu4e-autotask-rules)
   (run-hooks 'mu4e-autotask-pre-action-hook)
   (let ((sender
@@ -175,7 +222,10 @@ would match MSG."
             mu4e-autotask-rules)))
       (cond
        ((null matches)
-        (message "No automation rule matched for this message"))
+        (if (and mu4e-autotask-handle-icalendar
+                 (memq 'calendar (mu4e-message-field msg :flags)))
+            (mu4e-autotask--icalendar-rsvp msg)
+          (message "No automation rule matched for this message")))
        ((cdr matches)
         (user-error
          "More than one rule matches this message, fix `mu4e-autotask-rules'"))
@@ -338,7 +388,10 @@ Use the program named by `mu4e-autotask-open-file-command'."
   "Ask to send the message in the current compose buffer, to TO.
 The \"To:\" field of the email must already be filled out; TO is used only for
 the confirmation prompt.  Call SUCCESS-FN only after the message is sent; on a
-declined send, discard the compose buffer and signal a `user-error'.
+declined send, discard the compose buffer and signal a `user-error'.  An error
+or quit SUCCESS-FN signals is downgraded to a warning: the message is already
+sent at that point, so the failure of a follow-up action must not present as a
+failed send.
 
 This is the building block behind `mu4e-autotask-send-email', exposed for action
 functions that compose a message themselves (e.g. a forward or reply) and then
@@ -349,7 +402,23 @@ want the same confirm-and-send behavior."
         (progn
           ;; The buffer is destroyed right after the send attempt, so set the
           ;; buffer-local hook value without bothering to clean it up.
-          (add-hook 'message-sent-hook success-fn nil t)
+          (add-hook
+           'message-sent-hook
+           (lambda ()
+             ;; `message-sent-hook' runs after the send but before the
+             ;; send machinery's cleanup; an escaping error or quit would
+             ;; leave the sent message in a re-sendable compose buffer.
+             (condition-case err
+                 (funcall success-fn)
+               ((error quit)
+                (display-warning
+                 'mu4e-autotask
+                 (format
+                  "Message sent, but the follow-up action failed: %s"
+                  (error-message-string err))
+                 :error))))
+           nil
+           t)
           (message-send-and-exit))
       ;; The body and attachments leave the compose buffer modified; declining
       ;; the send means discarding it, so kill unconditionally rather than
@@ -374,6 +443,347 @@ paths to attach.  SUCCESS-FN is called only after the message is sent."
     (dolist (attachment attachments)
       (mml-attach-file attachment))
     (mu4e-autotask-do-send-email to success-fn)))
+
+;;; iCalendar RSVP
+
+(declare-function org-gcal-post-at-point "org-gcal")
+;; Value-less declarations: org-gcal is a soft dependency loaded at use time.
+;; Loading it binds these; the test sandbox, which stubs org-gcal instead of
+;; loading it, let-binds them.
+(defvar org-gcal-drawer-name)
+(defvar org-gcal-calendar-id-property)
+
+(defun mu4e-autotask--find-mime-handle (handle mime-type)
+  "Return the first leaf of the MIME HANDLE tree with MIME-TYPE, or nil.
+A handle whose car is a string is a multipart; recurse into its children."
+  (if (stringp (car handle))
+      (seq-some
+       (lambda (child)
+         (mu4e-autotask--find-mime-handle child mime-type))
+       (cdr handle))
+    (when (string= mime-type (mm-handle-media-type handle))
+      handle)))
+
+(defun mu4e-autotask--dissect-message (msg)
+  "Return the MIME handle tree of mu4e message MSG read from its file."
+  (with-temp-buffer
+    (set-buffer-multibyte nil)
+    (insert-file-contents-literally (mu4e-message-readable-path msg))
+    (mm-dissect-buffer t)))
+
+(defmacro mu4e-autotask--with-mime-handle (spec &rest body)
+  "Bind a fresh MIME handle from a message file and run BODY.
+SPEC is (VAR MSG MIME-TYPE): bind VAR to the first MIME-TYPE leaf of MSG's
+dissected message file.  Dissecting the file anew keeps the handle live
+regardless of any stale cached view state.  All dissected parts are destroyed
+when BODY exits, so VAR must not escape BODY.  Signal a `user-error' when the
+message has no MIME-TYPE part."
+  (declare (indent 1) (debug ((symbolp form form) body)))
+  (let ((dissected (make-symbol "dissected"))
+        (mtype (make-symbol "mime-type"))
+        (var (nth 0 spec))
+        (msg (nth 1 spec))
+        (mime-type (nth 2 spec)))
+    `(let ((,dissected (mu4e-autotask--dissect-message ,msg))
+           (,mtype ,mime-type))
+       (unwind-protect
+           (let ((,var
+                  (or (mu4e-autotask--find-mime-handle
+                       ,dissected ,mtype)
+                      (user-error "No %s part in this message"
+                                  ,mtype))))
+             ,@body)
+         (mm-destroy-parts ,dissected)))))
+
+(defun mu4e-autotask--icalendar-read-status ()
+  "Prompt for the RSVP status of a calendar invitation.
+Return one of the symbols `accepted', `tentative' or `declined'; signal a
+`user-error' when quit is chosen."
+  (pcase (car
+          (read-multiple-choice
+           "RSVP to this invitation? "
+           '((?a "accept")
+             (?t "tentative")
+             (?d "decline")
+             (?q "quit"))))
+    (?a 'accepted)
+    (?t 'tentative)
+    (?d 'declined)
+    (_ (user-error "RSVP cancelled"))))
+
+(defun mu4e-autotask--icalendar-organizer (msg event)
+  "Return the organizer email address of EVENT from invitation MSG.
+Fall back to the Reply-To and From addresses of MSG; signal a `user-error'
+when no address is found."
+  (let ((organizer (gnus-icalendar-event:organizer event)))
+    (or (and organizer (not (zerop (length organizer))) organizer)
+        (mu4e-contact-email (car (mu4e-message-field msg :reply-to)))
+        (mu4e-contact-email (car (mu4e-message-field msg :from)))
+        (user-error "Cannot find the meeting organizer"))))
+
+(defun mu4e-autotask--icalendar-fill-reply-buffer (reply)
+  "Return a fresh buffer holding the iTIP REPLY text.
+Each RSVP gets its own buffer rather than sharing gnus-icalendar's: the
+draft attaches the buffer by name and mml reads it only at send time, so a
+shared buffer would let a draft surviving past the flow mail a later
+invitation's reply.  Fold lines longer than 75 octets in the UTF-8 wire
+encoding, per RFC 5545 section 3.1, splitting only between characters.
+REPLY is decoded text: `gnus-icalendar-with-decoded-handle' already applied
+the part's charset."
+  (with-current-buffer (generate-new-buffer " *mu4e-autotask-rsvp*")
+    (insert reply)
+    (goto-char (point-min))
+    ;; RFC 5545 limits the physical line, so a continuation's leading fold
+    ;; space counts toward its 75 octets.  `string-bytes' of a one-character
+    ;; string equals the character's UTF-8 width, the encoding the part is
+    ;; attached in.
+    (while (not (eobp))
+      (let ((octets 0))
+        (while-let (((not (eolp)))
+                    (width (string-bytes (string (char-after))))
+                    ((<= (+ octets width) 75)))
+          (cl-incf octets width)
+          (forward-char))
+        (if (eolp)
+            (forward-line 1)
+          (insert "\n ")
+          (forward-line 0))))
+    (current-buffer)))
+
+;; This intentionally parallels mu4e's own `mu4e-icalendar-reply' rather
+;; than delegating to it: loading mu4e-icalendar installs global advice on
+;; `gnus-icalendar-reply'; its gnus-icalendar org-capture/diary side effects
+;; would record the event before the send is confirmed, conflicting with the
+;; org-gcal recording here; and it neither returns the organizer nor leaves
+;; the compose buffer current as `mu4e-autotask-do-send-email' requires.
+(defun mu4e-autotask--icalendar-compose-rsvp (msg handle event status)
+  "Compose the iTIP STATUS reply to the invitation EVENT from MSG.
+HANDLE is the text/calendar MIME handle the reply is built from.  Leave the
+compose buffer current and return the organizer address the reply goes to."
+  (let* ((gnus-icalendar-additional-identities
+          (mu4e-personal-addresses 'no-regexp))
+         (reply
+          (gnus-icalendar-with-decoded-handle
+           handle
+           (gnus-icalendar-event-reply-from-buffer
+            (current-buffer) status (gnus-icalendar-identities))))
+         (organizer (mu4e-autotask--icalendar-organizer msg event))
+         (message-signature nil)
+         (message-cite-function #'mu4e-message-cite-nothing))
+    (unless reply
+      (user-error "Cannot build the iTIP reply for this invitation"))
+    (let ((reply-buffer
+           (mu4e-autotask--icalendar-fill-reply-buffer reply))
+          (hook-installed nil))
+      ;; Until the kill-buffer-hook below ties REPLY-BUFFER's lifetime to
+      ;; the draft, an error from `mu4e-compose-reply-to' or the mml calls
+      ;; would orphan it; kill it on such a non-local exit.
+      (unwind-protect
+          (progn
+            ;; mu4e bug: `mu4e--view-add-mime-icons' assumes every
+            ;; `gnus-data' text property holds an MM handle, but the
+            ;; gnus-icalendar RSVP buttons store (HANDLE STATUS EVENT)
+            ;; there, so the citation render inside the reply compose
+            ;; crashes on any text/calendar message.  The icons are
+            ;; cosmetic; skip the pass.
+            (if (fboundp 'mu4e--view-add-mime-icons)
+                (cl-letf (((symbol-function
+                            'mu4e--view-add-mime-icons)
+                           #'ignore))
+                  (mu4e-compose-reply-to organizer))
+              (mu4e-compose-reply-to organizer))
+            (message-goto-body)
+            (mml-insert-multipart "alternative")
+            (mml-insert-empty-tag 'part 'type "text/plain")
+            (mml-attach-buffer
+             (buffer-name reply-buffer)
+             "text/calendar; method=REPLY; charset=UTF-8")
+            ;; mml reads the attached buffer at send time, so the reply
+            ;; buffer must live exactly as long as the draft; kill them
+            ;; together.
+            (add-hook 'kill-buffer-hook
+                      (lambda ()
+                        (when (buffer-live-p reply-buffer)
+                          (kill-buffer reply-buffer)))
+                      nil t)
+            (setq hook-installed t))
+        (unless hook-installed
+          (when (buffer-live-p reply-buffer)
+            (kill-buffer reply-buffer)))))
+    organizer))
+
+(defun mu4e-autotask--icalendar-sanitize-drawer-line (line)
+  "Return LINE made safe for an org-gcal drawer, or nil to drop it.
+Drop a line that would close the drawer early; escape a column-zero heading
+star with org-gcal's ✱ convention, which its drawer reader converts back to
+*, so descriptions round-trip losslessly."
+  ;; Org closes drawers case-insensitively regardless of user
+  ;; configuration, so the `:END:' match must not depend on the ambient
+  ;; `case-fold-search'.
+  (let ((case-fold-search t))
+    (cond
+     ((string-match-p "^[ \t]*:END:[ \t]*$" line)
+      nil)
+     ((string-prefix-p "*" line)
+      (concat "✱" (substring line 1)))
+     (t
+      line))))
+
+(defun mu4e-autotask--icalendar-sanitize-drawer-text (text)
+  "Return TEXT safe to insert inside an org-gcal drawer."
+  ;; A trailing newline would split into a final empty element and, with
+  ;; the caller's own newline, leave a blank line before the drawer's
+  ;; `:END:'; trim it.  Interior blank lines are intentional and kept.
+  (mapconcat #'identity
+             (delq
+              nil
+              (mapcar
+               #'mu4e-autotask--icalendar-sanitize-drawer-line
+               (split-string (replace-regexp-in-string
+                              "\n+\\'" "" text)
+                             "\n")))
+             "\n"))
+
+(defun mu4e-autotask--icalendar-org-gcal-available-p ()
+  "Return non-nil when org-gcal can be used to record an event.
+Load it on demand; `ignore-errors' because NOERROR only covers a missing
+file, not a load failure inside org-gcal's dependencies.  The `fboundp'
+fallback covers environments where the function exists without the package
+\(e.g. a test stub)."
+  (or (ignore-errors
+        (require 'org-gcal nil t))
+      (fboundp 'org-gcal-post-at-point)))
+
+(defun mu4e-autotask--icalendar-require-org-gcal ()
+  "Load org-gcal, signaling a `user-error' when it is unavailable."
+  (unless (mu4e-autotask--icalendar-org-gcal-available-p)
+    (user-error "Recording the event requires org-gcal")))
+
+(defun mu4e-autotask--icalendar-create-org-gcal-event
+    (target title time description location)
+  "Record a calendar event via org-gcal.
+TARGET is a cons (ORG-FILE . CALENDAR-ID); the entry titled TITLE, located at
+LOCATION, with the org timestamp TIME and body DESCRIPTION is appended to
+ORG-FILE and posted to the CALENDAR-ID Google calendar.  Signal a
+`user-error' when a buffer visits ORG-FILE with unsaved changes: recording
+saves the file, and the user's unrelated edits must not be saved as a side
+effect."
+  ;; Load org-gcal before writing: its drawer and property name
+  ;; customizations must be in effect for the entry text.
+  (mu4e-autotask--icalendar-require-org-gcal)
+  (let ((visiting (find-buffer-visiting (car target))))
+    (when (and visiting (buffer-modified-p visiting))
+      (user-error "%s has unsaved changes; not recording the event"
+                  (car target))))
+  (with-current-buffer (find-file-noselect (car target))
+    ;; The user may already visit this buffer narrowed and with point
+    ;; anywhere; append at the true end of file and restore their view.
+    ;; The widen must cover `org-gcal-post-at-point', which reads the
+    ;; entry at point.
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-max))
+        (unless (bolp)
+          (insert "\n"))
+        (insert
+         "* "
+         title
+         "\n"
+         ":PROPERTIES:\n"
+         ":"
+         org-gcal-calendar-id-property
+         ": "
+         (cdr target)
+         "\n")
+        (when (and location (not (zerop (length location))))
+          (insert
+           ":LOCATION: "
+           (replace-regexp-in-string "[\r\n]+" ", " location)
+           "\n"))
+        (insert ":END:\n" ":" org-gcal-drawer-name ":\n" time "\n")
+        ;; Test the sanitized text, not the raw description: a description
+        ;; of only newlines is non-empty yet sanitizes to "", which must
+        ;; not be inserted as a blank line before the drawer's `:END:'.
+        (when description
+          (let ((sanitized
+                 (mu4e-autotask--icalendar-sanitize-drawer-text
+                  description)))
+            (unless (string-empty-p sanitized)
+              (insert sanitized "\n"))))
+        (insert ":END:\n")
+        (save-buffer)
+        (org-gcal-post-at-point)))))
+
+(defun mu4e-autotask--icalendar-rsvp (msg)
+  "Run the built-in RSVP flow for the calendar invitation in MSG."
+  (mu4e-autotask--with-mime-handle (handle msg "text/calendar")
+    (let ((event
+           (gnus-icalendar-event-from-handle
+            handle (mu4e-personal-addresses 'no-regexp))))
+      (unless (and event (gnus-icalendar-event-request-p event))
+        (user-error "Not a calendar meeting request"))
+      ;; Capture the event fields as plain strings: HANDLE, and the EVENT
+      ;; derived from it, belong to the enclosing macro, so the send success
+      ;; function must not close over them.
+      (let*
+          ((status (mu4e-autotask--icalendar-read-status))
+           ;; The summary slot may be nil (SUMMARY is optional in RFC
+           ;; 5545) or contain newlines, neither of which an org heading
+           ;; tolerates.  A missing Subject is the empty string: never
+           ;; nil, `mu4e-message-field' already maps it.
+           (title
+            (let ((summary (gnus-icalendar-event:summary event))
+                  (subject (mu4e-message-field msg :subject)))
+              (cond
+               ((and summary (not (string-blank-p summary)))
+                (replace-regexp-in-string "[\r\n]+" ", " summary))
+               ((not (string-blank-p subject))
+                subject)
+               (t
+                "(no title)"))))
+           (time (gnus-icalendar-event:org-timestamp event))
+           (description (gnus-icalendar-event:description event))
+           (location (gnus-icalendar-event:location event))
+           ;; Capture the target function in effect when the user answered
+           ;; the prompt: the send success function below must not re-read
+           ;; the variable, which could change before the hook fires.
+           (target-fn mu4e-autotask-icalendar-event-target-function)
+           (recording (and target-fn (not (eq status 'declined))))
+           ;; When org-gcal is absent the target must be resolved before
+           ;; the send (below) to fail fast; cache that result so the
+           ;; post-send hook reuses it rather than calling the
+           ;; (possibly side-effecting) target function a second time.
+           (target-resolved nil)
+           (pre-send-target nil))
+        ;; A missing org-gcal is fully predictable, so check before the
+        ;; send: an RSVP must not go out only for the recording to fail.
+        ;; But the target function may decline this message (returning nil),
+        ;; in which case nothing is recorded and org-gcal is not needed;
+        ;; only error here, before the send, when org-gcal is absent and
+        ;; the target actually wants to record.
+        (when (and recording
+                   (not
+                    (mu4e-autotask--icalendar-org-gcal-available-p)))
+          (setq
+           pre-send-target (funcall target-fn msg)
+           target-resolved t)
+          (when pre-send-target
+            (user-error "Recording the event requires org-gcal")))
+        (mu4e-autotask-do-send-email
+         (mu4e-autotask--icalendar-compose-rsvp
+          msg handle event status)
+         (lambda ()
+           ;; Resolve the target only after the send is confirmed, unless
+           ;; the pre-send org-gcal check already resolved it: the target
+           ;; function may have side effects, so neither a cancelled send
+           ;; nor that check must (re)run it.
+           (when-let* ((target
+                        (if target-resolved
+                            pre-send-target
+                          (and recording (funcall target-fn msg)))))
+             (mu4e-autotask--icalendar-create-org-gcal-event
+              target title time description location))))))))
 
 (provide 'mu4e-autotask)
 ;;; mu4e-autotask.el ends here
