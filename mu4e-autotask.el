@@ -723,6 +723,15 @@ effect."
             handle (mu4e-personal-addresses 'no-regexp))))
       (unless (and event (gnus-icalendar-event-request-p event))
         (user-error "Not a calendar meeting request"))
+      ;; gnus-icalendar derives the reply attendee's CN from the
+      ;; `user-full-name' variable; an empty name yields an empty CN, which
+      ;; Emacs 31's stricter icalendar validation rejects when building the
+      ;; reply.  Require the name up front so the failure is an actionable
+      ;; message rather than an obscure validation error after prompting.
+      (unless (and user-full-name
+                   (not (string-blank-p user-full-name)))
+        (user-error
+         "Sending a calendar RSVP requires setting `user-full-name'"))
       ;; Capture the event fields as plain strings: HANDLE, and the EVENT
       ;; derived from it, belong to the enclosing macro, so the send success
       ;; function must not close over them.

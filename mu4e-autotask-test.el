@@ -331,8 +331,9 @@ and resets the dispatch-path customizations to their defaults so the RSVP
 flow runs regardless of the ambient session: `mu4e-autotask-rules' and
 `mu4e-autotask-pre-action-hook' to nil, `mu4e-autotask-handle-icalendar'
 to t, and `mu4e-autotask-icalendar-event-target-function' to nil.  Binds
-the org-gcal drawer and property names to their org-gcal defaults, as the
-package itself is absent from the test environment.  On exit kills the
+`user-full-name' non-empty, which the RSVP flow requires, and the org-gcal
+drawer and property names to their org-gcal defaults, as the package itself
+is absent from the test environment.  On exit kills the
 recorded draft buffer and any per-RSVP reply buffers, and deletes the files
 in `mu4e-autotask-test--files' along with any buffers visiting them."
   (declare (indent 0) (debug t))
@@ -346,6 +347,10 @@ in `mu4e-autotask-test--files' along with any buffers visiting them."
          (mu4e-autotask-pre-action-hook nil)
          (mu4e-autotask-handle-icalendar t)
          (mu4e-autotask-icalendar-event-target-function nil)
+         ;; The RSVP flow requires a non-empty `user-full-name': gnus-icalendar
+         ;; derives the reply attendee's CN from it.  Bind it so the flow runs
+         ;; regardless of the ambient session (the CI runner leaves it empty).
+         (user-full-name "Test User")
          (org-gcal-drawer-name "org-gcal")
          (org-gcal-calendar-id-property "calendar-id"))
      (unwind-protect
@@ -609,6 +614,19 @@ Quitting the prompt signals a `user-error'."
        :type 'user-error)
       (should-not mu4e-autotask-test--prompted)
       (should-not mu4e-autotask-test--posted))))
+
+(ert-deftest mu4e-autotask-test-icalendar-empty-user-full-name-refused ()
+  "An empty `user-full-name' refuses the RSVP before prompting.
+gnus-icalendar derives the reply attendee's CN from `user-full-name'; an empty
+CN is invalid, so the flow must error rather than compose a broken reply."
+  (mu4e-autotask-test--with-rsvp
+    (let ((user-full-name "")
+          (msg (mu4e-autotask-test--request-msg)))
+      (should-error
+       (mu4e-autotask-test--dispatch-rsvp
+        msg #'mu4e-autotask-test--choose-accept #'ignore)
+       :type 'user-error)
+      (should-not mu4e-autotask-test--prompted))))
 
 (ert-deftest mu4e-autotask-test-icalendar-accept-sends-reply-to-organizer ()
   "Accepting an invitation composes an iTIP REPLY to the organizer and sends."
