@@ -66,6 +66,16 @@ message it received.")
   "Record MSG as the dispatch action that ran, in `mu4e-autotask-test--called'."
   (setq mu4e-autotask-test--called msg))
 
+(defvar mu4e-autotask-test--browsed 'unset
+  "URL passed to `mu4e-autotask-test--record-browse', or `unset' if never called.
+A `mu4e-autotask-browse-url-matching' test binds this to `unset', stubs in the
+recorder for `browse-url', then asserts the URL that would have been visited (or
+that it stayed `unset' when no URL matched).")
+
+(defun mu4e-autotask-test--record-browse (url &rest _)
+  "Record URL as the stubbed `browse-url' target in `mu4e-autotask-test--browsed'."
+  (setq mu4e-autotask-test--browsed url))
+
 (defun mu4e-autotask-test--abort-hook ()
   "Signal a `user-error', standing in for a pre-action hook member that aborts."
   (user-error "No clock"))
@@ -1347,6 +1357,157 @@ would strip CR and reinterpret high bytes."
       (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                  #'mu4e-autotask-test--mime-parts))
         (should-error (mu4e-autotask-html-content) :type 'user-error)))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-group-1 ()
+  "`mu4e-autotask-browse-url-matching' visits capture group 1 and returns it.
+It also reports the visited URL with an \"Opening <url>\" message."
+  (let ((mu4e-autotask-test--browsed 'unset)
+        (reported nil))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+      (should
+       (equal
+        (mu4e-autotask-browse-url-matching
+         "href=\\(https://[^>]+\\)>" "x href=https://a.b/p> y")
+        "https://a.b/p"))
+      (should (equal mu4e-autotask-test--browsed "https://a.b/p"))
+      (should (equal reported "Opening https://a.b/p")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-strips-soft-breaks ()
+  "`mu4e-autotask-browse-url-matching' strips quoted-printable soft line breaks.
+A trailing = before a CRLF or LF is removed from the matched URL, repairing a
+fold that REGEXP already spanned because its URL character class (here `[^>]')
+admits the newline."
+  (let ((mu4e-autotask-test--browsed 'unset))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse))
+      (mu4e-autotask-browse-url-matching
+       "href=\\(https://[^>]+\\)>" "href=https://c.gle/AA=\r\nBB>")
+      (should (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-decodes-amp ()
+  "`mu4e-autotask-browse-url-matching' decodes the =&amp;= entity in the URL."
+  (let ((mu4e-autotask-test--browsed 'unset))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse))
+      (mu4e-autotask-browse-url-matching "\\(https://[^ ]+\\)" "https://x/a&amp;b")
+      (should (equal mu4e-autotask-test--browsed "https://x/a&b")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-group-0 ()
+  "`mu4e-autotask-browse-url-matching' honors an explicit GROUP of 0."
+  (let ((mu4e-autotask-test--browsed 'unset))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse))
+      (should
+       (equal
+        (mu4e-autotask-browse-url-matching
+         "https://[^ ]+" "see https://a.b/x now" nil 0)
+        "https://a.b/x"))
+      (should (equal mu4e-autotask-test--browsed "https://a.b/x")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-no-match ()
+  "`mu4e-autotask-browse-url-matching' returns nil and does not browse on no match.
+The miss message names the DESCRIPTION."
+  (let ((mu4e-autotask-test--browsed 'unset)
+        (reported nil))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+      (should
+       (null
+        (mu4e-autotask-browse-url-matching
+         "https://[^ ]+" "no url here" "Example link")))
+      (should (eq mu4e-autotask-test--browsed 'unset))
+      (should (equal reported "Could not find the Example link")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-no-match-default-description ()
+  "On no match with DESCRIPTION omitted, the miss message uses the \"URL\" default."
+  (let ((mu4e-autotask-test--browsed 'unset)
+        (reported nil))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+      (should (null (mu4e-autotask-browse-url-matching "https://[^ ]+" "no url here")))
+      (should (eq mu4e-autotask-test--browsed 'unset))
+      (should (equal reported "Could not find the URL")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-strips-soft-breaks-lf ()
+  "A bare-LF quoted-printable soft break (=\\n, no CR) is removed from the URL."
+  (let ((mu4e-autotask-test--browsed 'unset))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse))
+      (mu4e-autotask-browse-url-matching
+       "href=\\(https://[^>]+\\)>" "href=https://c.gle/AA=\nBB>")
+      (should (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-strips-bare-newline ()
+  "A bare CR/LF (no preceding =) inside the captured URL is removed, not browsed."
+  (let ((mu4e-autotask-test--browsed 'unset))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse))
+      (mu4e-autotask-browse-url-matching
+       "href=\\(https://[^>]+\\)>" "href=https://a.b/x\r\ny>")
+      (should (equal mu4e-autotask-test--browsed "https://a.b/xy")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-soft-break-splitting-amp ()
+  "Soft-break stripping runs before `&amp;' decoding.
+A soft break that splits the `&amp;' entity is repaired first, so the entity
+then decodes to a single `&'."
+  (let ((mu4e-autotask-test--browsed 'unset))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse))
+      (mu4e-autotask-browse-url-matching
+       "href=\\(https://[^>]+\\)>" "href=https://x/a&am=\r\np;b>")
+      (should (equal mu4e-autotask-test--browsed "https://x/a&b")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-empty-capture ()
+  "A matching REGEXP whose capture group is empty takes the miss path.
+`browse-url' is not called and the function returns nil rather than visiting an
+empty URL."
+  (let ((mu4e-autotask-test--browsed 'unset)
+        (reported nil))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+      (should (null (mu4e-autotask-browse-url-matching "x\\(y*\\)" "x" "thing")))
+      (should (eq mu4e-autotask-test--browsed 'unset))
+      (should (equal reported "Could not find the thing")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-nonparticipating-group ()
+  "A matching REGEXP whose capture group did not participate takes the miss path.
+The nil capture must not crash; it falls through to the miss branch."
+  (let ((mu4e-autotask-test--browsed 'unset)
+        (reported nil))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+      (should (null (mu4e-autotask-browse-url-matching "a\\(b\\)?c" "ac" "thing")))
+      (should (eq mu4e-autotask-test--browsed 'unset))
+      (should (equal reported "Could not find the thing")))))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-case-sensitive ()
+  "Matching is case-sensitive regardless of the ambient `case-fold-search'.
+With `case-fold-search' bound to t, a case-mismatched REGEXP does not match and
+a literal `&AMP;' is left undecoded."
+  (let ((mu4e-autotask-test--browsed 'unset)
+        (reported nil)
+        (case-fold-search t))
+    (cl-letf (((symbol-function 'browse-url)
+               #'mu4e-autotask-test--record-browse)
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+      ;; Case-mismatched scheme does not match under case-sensitive search.
+      (should (null (mu4e-autotask-browse-url-matching "HTTPS://[^ ]+" "see https://a.b/x" nil 0)))
+      (should (eq mu4e-autotask-test--browsed 'unset))
+      ;; `&AMP;' is not the `&amp;' entity, so it is left intact.
+      (mu4e-autotask-browse-url-matching "\\(https://[^ ]+\\)" "https://x/a&AMP;b")
+      (should (equal mu4e-autotask-test--browsed "https://x/a&AMP;b")))))
 
 (ert-deftest mu4e-autotask-test-csv-part-found ()
   "`mu4e-autotask-csv-part' returns the first .csv part."

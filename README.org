@@ -140,23 +140,37 @@ Reading the current message:
   (default 1); raise it if a slow viewer needs longer to read the file.
 - =(mu4e-autotask-download-all-jpgs)= :: save all JPG attachments.
 
+Acting on the message:
+
+- =(mu4e-autotask-browse-url-matching REGEXP CONTENT &optional DESCRIPTION GROUP)=
+  :: visit with =browse-url= the URL captured by GROUP (default 1) of REGEXP in
+  CONTENT, and return it.  Quoted-printable soft line breaks and any bare CR/LF
+  are removed, and the =&amp;= entity is decoded to =&=, in the captured URL
+  after the match — so a fold is spanned only when REGEXP's own URL character
+  class admits the newline (e.g. =[^>]=).  Matching is case-sensitive.  Messages
+  =Opening <url>= on success; on no match, or when the capture group is empty, it
+  messages about the missing DESCRIPTION (default ="URL"=) and returns nil.
+
 ** Example action functions
 
 An action function takes the mu4e message and runs in the message view, so the
 no-argument helpers above act on that same message.
 
-Open a URL parsed out of the raw message — e.g. a CI "run failed" notification:
+Open a URL parsed out of the raw message — e.g. a CI "run failed" notification —
+with =mu4e-autotask-browse-url-matching=, passing =GROUP= 0 for a regexp with no
+capture group:
 
 #+begin_src emacs-lisp
 (defun my-handle-github-run-failed (msg)
   "Open the failed-run URL found in MSG."
-  (let ((raw (mu4e-autotask-raw-message msg)))
-    (if (string-match "https://github\\.com/[^ \t\n\"]+/runs/[0-9]+" raw)
-        (browse-url (match-string 0 raw))
-      (message "No run URL found"))))
+  (mu4e-autotask-browse-url-matching
+   "https://github\\.com/[^ \t\n\"]+/runs/[0-9]+"
+   (mu4e-autotask-raw-message msg) "run URL" 0))
 #+end_src
 
-Pull a link out of the decoded plain-text body instead of the raw message:
+When the miss path needs to signal rather than message-and-return-nil, hand-roll
+the match instead — here pulling a link out of the decoded plain-text body and
+raising =user-error= when none is found:
 
 #+begin_src emacs-lisp
 (defun my-open-document-share (_msg)

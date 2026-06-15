@@ -283,6 +283,48 @@ Signal a `user-error' if the message has no part of MIME-TYPE."
   "Return the text/plain body of the current mu4e message."
   (mu4e-autotask-msg-content "text/plain"))
 
+(defun mu4e-autotask-browse-url-matching
+    (regexp content &optional description group)
+  "Browse the URL captured by REGEXP in CONTENT, and return it.
+Match REGEXP against CONTENT and pass capture GROUP (default 1) to `browse-url'.
+In the captured URL, quoted-printable soft line breaks (a trailing = before a
+newline), any remaining bare CR/LF, and the HTML entity `&amp;' are removed or
+decoded, after the match.  REGEXP can therefore span the folded lines of a raw
+message body only when its own URL character class admits the newline (e.g.
+`[^>]'); the cleanup then repairs the captured fold.  Matching is case-sensitive
+regardless of the ambient `case-fold-search'.  Message \"Opening <url>\" on
+success.  When REGEXP does not match, or its capture group is empty, message
+about the missing DESCRIPTION (default \"URL\") and return nil."
+  (save-match-data
+    ;; Bind `case-fold-search' so URL matching and the case-sensitive `&amp;'
+    ;; decode do not depend on the calling buffer's value.
+    (let*
+        ((case-fold-search nil)
+         ;; Bind the raw capture first: a non-participating GROUP yields nil,
+         ;; which must short-circuit before `replace-regexp-in-string' (which
+         ;; rejects nil).  The newline cleanups nest inner-to-outer: strip the
+         ;; quoted-printable soft break first, then any bare CR/LF, then decode
+         ;; `&amp;'.  Order matters -- a bare-newline strip ahead of the soft
+         ;; break would orphan its `='.
+         (raw
+          (and (string-match regexp content)
+               (match-string (or group 1) content)))
+         (url
+          (and raw
+               (replace-regexp-in-string
+                "&amp;" "&"
+                (replace-regexp-in-string
+                 "[\r\n]"
+                 ""
+                 (replace-regexp-in-string "=\r?\n" "" raw))))))
+      (if (and url (not (string-empty-p url)))
+          (progn
+            (message "Opening %s" url)
+            (browse-url url)
+            url)
+        (message "Could not find the %s" (or description "URL"))
+        nil))))
+
 (defun mu4e-autotask--part-filename-has-suffix-p (part suffix)
   "Return non-nil if the `:filename' of mu4e MIME PART ends with SUFFIX.
 The comparison ignores case."
