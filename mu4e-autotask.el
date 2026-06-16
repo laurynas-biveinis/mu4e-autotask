@@ -325,6 +325,25 @@ about the missing DESCRIPTION (default \"URL\") and return nil."
         (message "Could not find the %s" (or description "URL"))
         nil))))
 
+(defun mu4e-autotask-when-body-matches
+    (msg regexp action &optional skip-message)
+  "Call ACTION with MSG when REGEXP matches the raw message of MSG.
+Match REGEXP against `mu4e-autotask-raw-message' of MSG (headers and body).  On
+a match, call ACTION with MSG and return its value.  Otherwise message
+SKIP-MESSAGE, when it is non-nil, and return nil without calling ACTION.
+Matching is case-sensitive.
+
+This guards an action function that should run only for a subset of the messages
+its rule matches: a sender that sends several kinds of notification under one
+subject, told apart only by a marker somewhere in the raw message."
+  ;; Bind `case-fold-search' for a case-sensitive, caller-independent match.
+  (let ((case-fold-search nil))
+    (if (string-match-p regexp (mu4e-autotask-raw-message msg))
+        (funcall action msg)
+      (when skip-message
+        (message "%s" skip-message))
+      nil)))
+
 (defun mu4e-autotask--part-filename-has-suffix-p (part suffix)
   "Return non-nil if the `:filename' of mu4e MIME PART ends with SUFFIX.
 The comparison ignores case."

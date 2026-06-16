@@ -150,6 +150,13 @@ Acting on the message:
   class admits the newline (e.g. =[^>]=).  Matching is case-sensitive.  Messages
   =Opening <url>= on success; on no match, or when the capture group is empty, it
   messages about the missing DESCRIPTION (default ="URL"=) and returns nil.
+- =(mu4e-autotask-when-body-matches MSG REGEXP ACTION &optional SKIP-MESSAGE)= ::
+  call =ACTION= with =MSG= when =REGEXP= matches the raw message of =MSG=
+  (headers and body), returning its value; otherwise message =SKIP-MESSAGE= (when
+  non-nil) and return nil without calling =ACTION=.  Matching is case-sensitive.
+  Use it to guard an action that should run only for a subset of the messages its
+  rule matches — when one sender emails several kinds of notification under one
+  subject, told apart only by a marker somewhere in the raw message.
 
 ** Example action functions
 
@@ -205,6 +212,20 @@ Save all photo attachments:
 (defun my-save-photos (_msg)
   "Save every JPG attachment of the current message."
   (mu4e-autotask-download-all-jpgs))
+#+end_src
+
+Run an action only for a subset of the messages a rule matches — when one sender
+emits several kinds of notification under a single subject, told apart by a
+marker somewhere in the raw message — with =mu4e-autotask-when-body-matches=:
+
+#+begin_src emacs-lisp
+(defun my-handle-production-alert (msg)
+  "Open the alert dashboard only when MSG is a production alert.
+The sender emails staging and production alerts under one subject; only the
+production ones carry \"env=production\" in the raw message."
+  (mu4e-autotask-when-body-matches
+   msg "env=production" #'my-open-alert-dashboard
+   "Not a production alert; nothing to do"))
 #+end_src
 
 * Sending templated mail

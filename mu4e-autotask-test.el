@@ -1509,6 +1509,106 @@ a literal `&AMP;' is left undecoded."
       (mu4e-autotask-browse-url-matching "\\(https://[^ ]+\\)" "https://x/a&AMP;b")
       (should (equal mu4e-autotask-test--browsed "https://x/a&AMP;b")))))
 
+(ert-deftest mu4e-autotask-test-when-body-matches-runs-action ()
+  "`mu4e-autotask-when-body-matches' calls ACTION with MSG on a body match.
+It returns ACTION's value."
+  (let ((file (make-temp-file "mu4e-autotask-test"))
+        (seen 'unset))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "Payment site: epaslaugos.lt\n"))
+          (let ((msg `(:path ,file)))
+            (should
+             (eq
+              (mu4e-autotask-when-body-matches
+               msg "epaslaugos\\.lt"
+               (lambda (m) (setq seen m) 'done))
+              'done))
+            (should (eq seen msg))))
+      (delete-file file))))
+
+(ert-deftest mu4e-autotask-test-when-body-matches-skips-and-reports ()
+  "`mu4e-autotask-when-body-matches' skips ACTION and reports SKIP-MESSAGE.
+On no match it returns nil and never calls ACTION."
+  (let ((file (make-temp-file "mu4e-autotask-test"))
+        (called nil)
+        (reported nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "Payment site: somewhere.else\n"))
+          (cl-letf (((symbol-function 'message)
+                     (lambda (fmt &rest args)
+                       (setq reported (apply #'format fmt args)))))
+            (should
+             (null
+              (mu4e-autotask-when-body-matches
+               `(:path ,file) "epaslaugos\\.lt"
+               (lambda (_m) (setq called t))
+               "Not for epaslaugos.lt; nothing to do")))
+            (should-not called)
+            (should
+             (equal reported "Not for epaslaugos.lt; nothing to do"))))
+      (delete-file file))))
+
+(ert-deftest mu4e-autotask-test-when-body-matches-silent-without-skip-message ()
+  "`mu4e-autotask-when-body-matches' is silent on no match when SKIP-MESSAGE is nil."
+  (let ((file (make-temp-file "mu4e-autotask-test"))
+        (messaged nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "nothing relevant here\n"))
+          (cl-letf (((symbol-function 'message)
+                     (lambda (&rest _) (setq messaged t))))
+            (should
+             (null
+              (mu4e-autotask-when-body-matches
+               `(:path ,file) "epaslaugos\\.lt" #'ignore)))
+            (should-not messaged)))
+      (delete-file file))))
+
+(ert-deftest mu4e-autotask-test-when-body-matches-matches-headers ()
+  "`mu4e-autotask-when-body-matches' matches the whole raw message, headers too.
+A marker present only in a header still fires ACTION."
+  (let ((file (make-temp-file "mu4e-autotask-test"))
+        (fired nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "From: alerts@example.com\n"
+                    "X-Environment: env=production\n"
+                    "Subject: alert\n"
+                    "\n"
+                    "Body has no marker here.\n"))
+          (should
+           (eq
+            (mu4e-autotask-when-body-matches
+             `(:path ,file) "env=production"
+             (lambda (_m) (setq fired t) 'done))
+            'done))
+          (should fired))
+      (delete-file file))))
+
+(ert-deftest mu4e-autotask-test-when-body-matches-case-sensitive ()
+  "`mu4e-autotask-when-body-matches' matches case-sensitively, ignoring folding.
+A case-mismatched marker does not fire ACTION even when `case-fold-search' is t."
+  (let ((file (make-temp-file "mu4e-autotask-test"))
+        (called nil)
+        (case-fold-search t))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "Marker: ENV=PRODUCTION\n"))
+          (should
+           (null
+            (mu4e-autotask-when-body-matches
+             `(:path ,file) "env=production"
+             (lambda (_m) (setq called t)))))
+          (should-not called))
+      (delete-file file))))
+
 (ert-deftest mu4e-autotask-test-csv-part-found ()
   "`mu4e-autotask-csv-part' returns the first .csv part."
   (let ((mu4e-autotask-test--parts
