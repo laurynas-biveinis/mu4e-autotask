@@ -41,7 +41,8 @@
   (declare (indent 0))
   `(let ((mu4e-autotask-test--buffers nil))
      (unwind-protect
-         (progn ,@body)
+         (progn
+           ,@body)
        (dolist (buf mu4e-autotask-test--buffers)
          (when (buffer-live-p buf)
            (kill-buffer buf))))))
@@ -67,13 +68,14 @@ message it received.")
   (setq mu4e-autotask-test--called msg))
 
 (defvar mu4e-autotask-test--browsed 'unset
-  "URL passed to `mu4e-autotask-test--record-browse', or `unset' if never called.
+  "URL passed to the `browse-url' stub, or `unset' if never called.
 A `mu4e-autotask-browse-url-matching' test binds this to `unset', stubs in the
 recorder for `browse-url', then asserts the URL that would have been visited (or
 that it stayed `unset' when no URL matched).")
 
 (defun mu4e-autotask-test--record-browse (url &rest _)
-  "Record URL as the stubbed `browse-url' target in `mu4e-autotask-test--browsed'."
+  "Record URL as the stubbed `browse-url' target.
+Store it in `mu4e-autotask-test--browsed'."
   (setq mu4e-autotask-test--browsed url))
 
 (defun mu4e-autotask-test--abort-hook ()
@@ -99,23 +101,29 @@ Serves both as the FN given to `mu4e-autotask-for-each-attachment' and as a
 `mm-save-part-to-file' stand-in."
   (push (cons handle path) mu4e-autotask-test--saved))
 
-(defun mu4e-autotask-test--invite-ics (method &optional description
-                                              omit-organizer)
+(defun mu4e-autotask-test--invite-ics
+    (method &optional description omit-organizer)
   "Return iCalendar text with METHOD for calendar invitation fixtures.
 DESCRIPTION overrides the event description and may contain backslash-n
 escapes per RFC 5545.  With OMIT-ORGANIZER, leave out the ORGANIZER property."
   (concat
    "BEGIN:VCALENDAR\n"
-   "METHOD:" method "\n"
+   "METHOD:"
+   method
+   "\n"
    "PRODID:Test\n"
    "VERSION:2.0\n"
    "BEGIN:VEVENT\n"
-   (if omit-organizer "" "ORGANIZER:MAILTO:org@example.com\n")
+   (if omit-organizer
+       ""
+     "ORGANIZER:MAILTO:org@example.com\n")
    "DTSTART:20260611T150000Z\n"
    "DTEND:20260611T153000Z\n"
    "SUMMARY:Team meeting\n"
    "LOCATION:Room 5\n"
-   "DESCRIPTION:" (or description "Agenda") "\n"
+   "DESCRIPTION:"
+   (or description "Agenda")
+   "\n"
    "ATTENDEE;RSVP=TRUE;PARTSTAT=NEEDS-ACTION;CN=Me:MAILTO:me@example.com\n"
    "UID:test-uid-1\n"
    "END:VEVENT\n"
@@ -131,17 +139,18 @@ escapes per RFC 5545.  With OMIT-ORGANIZER, leave out the ORGANIZER property."
     file))
 
 (defconst mu4e-autotask-test--invite-headers-format
-  (concat "From: Org <org@example.com>\n"
-          "To: me@example.com\n"
-          "Subject: Meeting\n"
-          "MIME-Version: 1.0\n"
-          "Content-Type: text/calendar; method=%s; charset=utf-8\n"
-          "\n")
+  (concat
+   "From: Org <org@example.com>\n"
+   "To: me@example.com\n"
+   "Subject: Meeting\n"
+   "MIME-Version: 1.0\n"
+   "Content-Type: text/calendar; method=%s; charset=utf-8\n"
+   "\n")
   "Format string for the headers of a single-part invitation message.
 The format argument is the iCalendar METHOD.")
 
-(defun mu4e-autotask-test--write-invite (method &optional description
-                                                omit-organizer)
+(defun mu4e-autotask-test--write-invite
+    (method &optional description omit-organizer)
   "Write a single-part text/calendar message with METHOD and DESCRIPTION.
 With OMIT-ORGANIZER, leave out the event's ORGANIZER property.  Return the
 message file path, registered for cleanup."
@@ -149,7 +158,9 @@ message file path, registered for cleanup."
     (with-temp-file file
       (insert
        (format mu4e-autotask-test--invite-headers-format method)
-       (mu4e-autotask-test--invite-ics method description omit-organizer)))
+       (mu4e-autotask-test--invite-ics method
+                                       description
+                                       omit-organizer)))
     file))
 
 (defun mu4e-autotask-test--write-transformed-request (regexp rep)
@@ -166,30 +177,38 @@ cleanup."
 
 (defun mu4e-autotask-test--invite-msg (file)
   "Return a calendar-flagged fake mu4e message plist for FILE."
-  `(:path ,file
+  `(:path
+    ,file
     :from ((:email "org@example.com"))
     :subject "Meeting"
     :flags (seen calendar)))
 
-(defun mu4e-autotask-test--request-msg (&optional description
-                                                  omit-organizer)
+(defun mu4e-autotask-test--request-msg
+    (&optional description omit-organizer)
   "Write a METHOD:REQUEST invitation and return its fake mu4e message.
 DESCRIPTION and OMIT-ORGANIZER are passed on to
 `mu4e-autotask-test--write-invite'."
   (mu4e-autotask-test--invite-msg
-   (mu4e-autotask-test--write-invite "REQUEST" description omit-organizer)))
+   (mu4e-autotask-test--write-invite "REQUEST"
+                                     description omit-organizer)))
 
 (defun mu4e-autotask-test--personal-addresses (&rest _)
   "Return the test identity, standing in for `mu4e-personal-addresses'."
   '("me@example.com"))
 
 (defun mu4e-autotask-test--make-draft (to)
-  "Create a message-mode draft buffer addressed to TO and leave it current.
+  "Create a `message-mode' draft buffer addressed to TO and leave it current.
 Return the buffer.  Mirrors the real `mu4e-compose-reply-to', which leaves a
 new draft buffer current."
   (let ((buf (generate-new-buffer " *draft*")))
     (set-buffer buf)
-    (insert "To: " to "\n" "Subject: Re: Meeting\n" mail-header-separator "\n")
+    (insert
+     "To: "
+     to
+     "\n"
+     "Subject: Re: Meeting\n"
+     mail-header-separator
+     "\n")
     (message-mode)
     buf))
 
@@ -201,8 +220,9 @@ new draft buffer current."
 
 (defun mu4e-autotask-test--reply-to (to)
   "Stand-in for `mu4e-compose-reply-to': create and record a draft to TO."
-  (setq mu4e-autotask-test--draft-to to
-        mu4e-autotask-test--draft-buffer (mu4e-autotask-test--make-draft to)))
+  (setq
+   mu4e-autotask-test--draft-to to
+   mu4e-autotask-test--draft-buffer (mu4e-autotask-test--make-draft to)))
 
 (defvar mu4e-autotask-test--prompted nil
   "Non-nil once a `mu4e-autotask-test--choose-' RSVP prompt stand-in ran.")
@@ -290,21 +310,23 @@ The calendar id is the fixture constant cal@example.com."
 
 (defun mu4e-autotask-test--reply-buffer ()
   "Return the single live per-RSVP reply buffer; fail unless exactly one."
-  (let ((buffers (cl-remove-if-not #'mu4e-autotask-test--rsvp-reply-buffer-p
-                                   (buffer-list))))
+  (let ((buffers
+         (cl-remove-if-not
+          #'mu4e-autotask-test--rsvp-reply-buffer-p (buffer-list))))
     (should (equal (length buffers) 1))
     (car buffers)))
 
 (defconst mu4e-autotask-test--recorded-event-re
-  (concat "\\`\\* Team meeting\n"
-          ":PROPERTIES:\n"
-          ":calendar-id: cal@example\\.com\n"
-          ":LOCATION: Room 5\n"
-          ":END:\n"
-          ":org-gcal:\n"
-          "<2026-06-1[0-9] [0-9:]+-[0-9:]+>\n"
-          "Agenda\n"
-          ":END:\n\\'")
+  (concat
+   "\\`\\* Team meeting\n"
+   ":PROPERTIES:\n"
+   ":calendar-id: cal@example\\.com\n"
+   ":LOCATION: Room 5\n"
+   ":END:\n"
+   ":org-gcal:\n"
+   "<2026-06-1[0-9] [0-9:]+-[0-9:]+>\n"
+   "Agenda\n"
+   ":END:\n\\'")
   "Anchored regex matching the whole recorded entry of the default fixture.
 The timestamp hour is left open because the fixture's UTC times render in
 the local time zone.")
@@ -340,29 +362,30 @@ Installs `mu4e-autotask-test--reply-to' for `mu4e-compose-reply-to' and
 and resets the dispatch-path customizations to their defaults so the RSVP
 flow runs regardless of the ambient session: `mu4e-autotask-rules' and
 `mu4e-autotask-pre-action-hook' to nil, `mu4e-autotask-handle-icalendar'
-to t, and `mu4e-autotask-icalendar-event-target-function' to nil.  Binds
-`user-full-name' non-empty, which the RSVP flow requires, and the org-gcal
-drawer and property names to their org-gcal defaults, as the package itself
-is absent from the test environment.  On exit kills the
+to t, and `mu4e-autotask-icalendar-event-target-function' to nil.  Binds the
+variable `user-full-name' non-empty, which the RSVP flow requires, and the
+org-gcal drawer and property names to their org-gcal defaults, as the package
+itself is absent from the test environment.  On exit kills the
 recorded draft buffer and any per-RSVP reply buffers, and deletes the files
 in `mu4e-autotask-test--files' along with any buffers visiting them."
   (declare (indent 0) (debug t))
-  `(let ((mu4e-autotask-test--draft-to nil)
-         (mu4e-autotask-test--draft-buffer nil)
-         (mu4e-autotask-test--files nil)
-         (mu4e-autotask-test--prompted nil)
-         (mu4e-autotask-test--sent nil)
-         (mu4e-autotask-test--posted nil)
-         (mu4e-autotask-rules nil)
-         (mu4e-autotask-pre-action-hook nil)
-         (mu4e-autotask-handle-icalendar t)
-         (mu4e-autotask-icalendar-event-target-function nil)
-         ;; The RSVP flow requires a non-empty `user-full-name': gnus-icalendar
-         ;; derives the reply attendee's CN from it.  Bind it so the flow runs
-         ;; regardless of the ambient session (the CI runner leaves it empty).
-         (user-full-name "Test User")
-         (org-gcal-drawer-name "org-gcal")
-         (org-gcal-calendar-id-property "calendar-id"))
+  `(let
+       ((mu4e-autotask-test--draft-to nil)
+        (mu4e-autotask-test--draft-buffer nil)
+        (mu4e-autotask-test--files nil)
+        (mu4e-autotask-test--prompted nil)
+        (mu4e-autotask-test--sent nil)
+        (mu4e-autotask-test--posted nil)
+        (mu4e-autotask-rules nil)
+        (mu4e-autotask-pre-action-hook nil)
+        (mu4e-autotask-handle-icalendar t)
+        (mu4e-autotask-icalendar-event-target-function nil)
+        ;; The RSVP flow requires a non-empty `user-full-name': gnus-icalendar
+        ;; derives the reply attendee's CN from it.  Bind it so the flow runs
+        ;; regardless of the ambient session (the CI runner leaves it empty).
+        (user-full-name "Test User")
+        (org-gcal-drawer-name "org-gcal")
+        (org-gcal-calendar-id-property "calendar-id"))
      (unwind-protect
          (cl-letf (((symbol-function 'mu4e-compose-reply-to)
                     #'mu4e-autotask-test--reply-to)
@@ -386,7 +409,8 @@ in `mu4e-autotask-test--files' along with any buffers visiting them."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Hello"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com"
+         '((:sender-exact
+            "a@b.com"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should (equal mu4e-autotask-test--called msg))))
@@ -397,9 +421,12 @@ mu4e documents `:from' contacts as (:name NAME :email EMAIL), so the email must
 be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg
-         '(:from ((:name "Some One" :email "a@b.com")) :subject "Hello"))
+         '(:from
+           ((:name "Some One" :email "a@b.com"))
+           :subject "Hello"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com"
+         '((:sender-exact
+            "a@b.com"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should (equal mu4e-autotask-test--called msg))))
@@ -409,7 +436,8 @@ be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "x@y.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com"
+         '((:sender-exact
+            "a@b.com"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
@@ -419,7 +447,8 @@ be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:sender-match "@b\\.com$"
+         '((:sender-match
+            "@b\\.com$"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should mu4e-autotask-test--called)))
@@ -429,17 +458,21 @@ be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@c.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:sender-match "@b\\.com$"
+         '((:sender-match
+            "@b\\.com$"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
 
-(ert-deftest mu4e-autotask-test-dispatch-no-sender-criteria-never-matches ()
+(ert-deftest
+    mu4e-autotask-test-dispatch-no-sender-criteria-never-matches
+    ()
   "A rule with no sender criteria never fires, even when its subject matches."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:subject-exact "Hi"
+         '((:subject-exact
+            "Hi"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
@@ -449,7 +482,9 @@ be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-exact "Hi"
+         '((:sender-exact
+            "a@b.com"
+            :subject-exact "Hi"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should mu4e-autotask-test--called)))
@@ -459,7 +494,9 @@ be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "hello"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-match "^Re: "
+         '((:sender-exact
+            "a@b.com"
+            :subject-match "^Re: "
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
@@ -469,9 +506,11 @@ be read by key, not by position."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Hello"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com"
+         '((:sender-exact
+            "a@b.com"
             :action-fn mu4e-autotask-test--record-call)
-           (:sender-match "@b\\.com$"
+           (:sender-match
+            "@b\\.com$"
             :action-fn mu4e-autotask-test--record-call))))
     (should-error (mu4e-autotask-dispatch msg) :type 'user-error)
     (should-not mu4e-autotask-test--called)))
@@ -480,17 +519,21 @@ be read by key, not by position."
   "Dispatch rejects a rule that sets both `:sender-exact' and `:sender-match'."
   (let ((msg '(:from ((:email "a@b.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :sender-match "@b"
+         '((:sender-exact
+            "a@b.com"
+            :sender-match "@b"
             :action-fn ignore))))
     (should-error (mu4e-autotask-dispatch msg) :type 'user-error)))
 
 (ert-deftest mu4e-autotask-test-dispatch-subject-both-set-errors ()
-  "Dispatch rejects a both-subject-keys rule even when its sender does not match.
+  "Dispatch rejects a both-subject-keys rule even if its sender does not match.
 Validation must not depend on the rule being selected by the message sender."
   (let ((msg '(:from ((:email "x@y.com")) :subject "Hi"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com"
-            :subject-exact "Hi" :subject-match "H"
+         '((:sender-exact
+            "a@b.com"
+            :subject-exact "Hi"
+            :subject-match "H"
             :action-fn ignore))))
     (should-error (mu4e-autotask-dispatch msg) :type 'user-error)))
 
@@ -500,31 +543,39 @@ Validation must not depend on the rule being selected by the message sender."
         (mu4e-autotask-rules '((:sender-exact "a@b.com"))))
     (should-error (mu4e-autotask-dispatch msg) :type 'user-error)))
 
-(ert-deftest mu4e-autotask-test-dispatch-non-function-action-fn-errors ()
+(ert-deftest mu4e-autotask-test-dispatch-non-function-action-fn-errors
+    ()
   "Dispatch rejects a rule whose `:action-fn' is not a function."
   (let ((msg '(:from ((:email "a@b.com")) :subject "Hi"))
         (mu4e-autotask-rules
          '((:sender-exact "a@b.com" :action-fn "not-a-function"))))
     (should-error (mu4e-autotask-dispatch msg) :type 'user-error)))
 
-(ert-deftest mu4e-autotask-test-dispatch-both-criteria-subject-mismatch ()
-  "A both-criteria rule does not fire when the sender matches but the subject
-does not."
+(ert-deftest
+    mu4e-autotask-test-dispatch-both-criteria-subject-mismatch
+    ()
+  "A both-criteria rule does not fire on a sender-only match.
+The sender matches but the subject does not."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Y"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-exact "X"
+         '((:sender-exact
+            "a@b.com"
+            :subject-exact "X"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
 
-(ert-deftest mu4e-autotask-test-dispatch-both-criteria-sender-mismatch ()
-  "A both-criteria rule does not fire when the subject matches but the sender
-does not."
+(ert-deftest mu4e-autotask-test-dispatch-both-criteria-sender-mismatch
+    ()
+  "A both-criteria rule does not fire on a subject-only match.
+The subject matches but the sender does not."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "c@d.com")) :subject "X"))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-exact "X"
+         '((:sender-exact
+            "a@b.com"
+            :subject-exact "X"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
@@ -533,10 +584,13 @@ does not."
   "The pre-action hook runs before any rule action."
   (let* ((order nil)
          (msg '(:from ((:email "a@b.com")) :subject "Hello"))
-         (mu4e-autotask-pre-action-hook (list (lambda () (push 'hook order))))
+         (mu4e-autotask-pre-action-hook
+          (list (lambda () (push 'hook order))))
          (mu4e-autotask-rules
-          `((:sender-exact "a@b.com"
-             :action-fn ,(lambda (_m) (push 'action order))))))
+          `((:sender-exact
+             "a@b.com"
+             :action-fn
+             ,(lambda (_m) (push 'action order))))))
     (mu4e-autotask-dispatch msg)
     (should (equal order '(action hook)))))
 
@@ -544,19 +598,23 @@ does not."
   "A signaling pre-action hook member aborts before any action."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com")) :subject "Hello"))
-        (mu4e-autotask-pre-action-hook '(mu4e-autotask-test--abort-hook))
+        (mu4e-autotask-pre-action-hook
+         '(mu4e-autotask-test--abort-hook))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com"
+         '((:sender-exact
+            "a@b.com"
             :action-fn mu4e-autotask-test--record-call))))
     (should-error (mu4e-autotask-dispatch msg) :type 'user-error)
     (should-not mu4e-autotask-test--called)))
 
 (ert-deftest mu4e-autotask-test-dispatch-subject-match-no-subject ()
-  "A non-empty `:subject-match' rule does not fire on a message with no subject."
+  "A non-empty `:subject-match' rule never fires on a subjectless message."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com"))))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-match "x"
+         '((:sender-exact
+            "a@b.com"
+            :subject-match "x"
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should-not mu4e-autotask-test--called)))
@@ -568,7 +626,9 @@ matches it."
   (let ((mu4e-autotask-test--called nil)
         (msg '(:from ((:email "a@b.com"))))
         (mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-exact ""
+         '((:sender-exact
+            "a@b.com"
+            :subject-exact ""
             :action-fn mu4e-autotask-test--record-call))))
     (mu4e-autotask-dispatch msg)
     (should mu4e-autotask-test--called)))
@@ -577,7 +637,9 @@ matches it."
   "Subject matching during dispatch does not clobber global match data."
   (string-match "bar" "xxbar")
   (let ((mu4e-autotask-rules
-         '((:sender-exact "a@b.com" :subject-match "foo"
+         '((:sender-exact
+            "a@b.com"
+            :subject-match "foo"
             :action-fn ignore)))
         (msg '(:from ((:email "a@b.com")) :subject "foofoo")))
     (mu4e-autotask-dispatch msg)
@@ -589,19 +651,23 @@ matches it."
     (mu4e-autotask-initialize)
     (should
      (member
-      '("Execute automation" . mu4e-autotask-dispatch) mu4e-view-actions))
+      '("Execute automation" . mu4e-autotask-dispatch)
+      mu4e-view-actions))
     (mu4e-autotask-initialize)
     (should
      (equal
       1
       (cl-count
-       '("Execute automation" . mu4e-autotask-dispatch)
+       '("Execute automation"
+         .
+         mu4e-autotask-dispatch)
        mu4e-view-actions
        :test #'equal)))))
 
 ;;; iCalendar RSVP
 
-(ert-deftest mu4e-autotask-test-icalendar-gate-prompts-and-quit-bails ()
+(ert-deftest mu4e-autotask-test-icalendar-gate-prompts-and-quit-bails
+    ()
   "A calendar-flagged message with no matching rule reaches the RSVP prompt.
 Quitting the prompt signals a `user-error'."
   (mu4e-autotask-test--with-rsvp
@@ -613,11 +679,14 @@ Quitting the prompt signals a `user-error'."
       (should mu4e-autotask-test--prompted)
       (should-not mu4e-autotask-test--posted))))
 
-(ert-deftest mu4e-autotask-test-icalendar-non-request-bails-before-prompt ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-non-request-bails-before-prompt
+    ()
   "A calendar-flagged message that is not a meeting request never prompts."
   (mu4e-autotask-test--with-rsvp
-    (let ((msg (mu4e-autotask-test--invite-msg
-                (mu4e-autotask-test--write-invite "REPLY"))))
+    (let ((msg
+           (mu4e-autotask-test--invite-msg
+            (mu4e-autotask-test--write-invite "REPLY"))))
       (should-error
        (mu4e-autotask-test--dispatch-rsvp
         msg #'mu4e-autotask-test--choose-accept #'ignore)
@@ -625,10 +694,11 @@ Quitting the prompt signals a `user-error'."
       (should-not mu4e-autotask-test--prompted)
       (should-not mu4e-autotask-test--posted))))
 
-(ert-deftest mu4e-autotask-test-icalendar-empty-user-full-name-refused ()
-  "An empty `user-full-name' refuses the RSVP before prompting.
-gnus-icalendar derives the reply attendee's CN from `user-full-name'; an empty
-CN is invalid, so the flow must error rather than compose a broken reply."
+(ert-deftest mu4e-autotask-test-icalendar-empty-user-full-name-refused
+    ()
+  "An empty variable `user-full-name' refuses the RSVP before prompting.
+gnus-icalendar derives the reply attendee's CN from it; an empty CN is
+invalid, so the flow must error rather than compose a broken reply."
   (mu4e-autotask-test--with-rsvp
     (let ((user-full-name "")
           (msg (mu4e-autotask-test--request-msg)))
@@ -638,22 +708,28 @@ CN is invalid, so the flow must error rather than compose a broken reply."
        :type 'user-error)
       (should-not mu4e-autotask-test--prompted))))
 
-(ert-deftest mu4e-autotask-test-icalendar-accept-sends-reply-to-organizer ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-accept-sends-reply-to-organizer
+    ()
   "Accepting an invitation composes an iTIP REPLY to the organizer and sends."
   (mu4e-autotask-test--with-rsvp
     (let ((msg (mu4e-autotask-test--request-msg)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-recording-content)
       (should (equal mu4e-autotask-test--draft-to "org@example.com"))
       (should
-       (string-match-p "text/calendar; method=REPLY"
-                       mu4e-autotask-test--sent))
+       (string-match-p
+        "text/calendar; method=REPLY" mu4e-autotask-test--sent))
       (with-current-buffer (mu4e-autotask-test--reply-buffer)
         (should (string-match-p "METHOD:REPLY" (buffer-string)))
-        (should (string-match-p "PARTSTAT=ACCEPTED" (buffer-string)))))))
+        (should
+         (string-match-p "PARTSTAT=ACCEPTED" (buffer-string)))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-accept-records-org-gcal-event ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-accept-records-org-gcal-event
+    ()
   "Accepting with a target function records the event after the send."
   (mu4e-autotask-test--with-rsvp
     (let* ((msg (mu4e-autotask-test--request-msg))
@@ -661,29 +737,37 @@ CN is invalid, so the flow must error rather than compose a broken reply."
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (let ((posted mu4e-autotask-test--posted))
         (should posted)
         (should
-         (string-match-p mu4e-autotask-test--recorded-event-re posted))
-        (should (equal posted (with-temp-buffer
-                                (insert-file-contents org-file)
-                                (buffer-string))))))))
+         (string-match-p
+          mu4e-autotask-test--recorded-event-re posted))
+        (should
+         (equal
+          posted
+          (with-temp-buffer
+            (insert-file-contents org-file)
+            (buffer-string))))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-decline-sends-without-event ()
+(ert-deftest mu4e-autotask-test-icalendar-decline-sends-without-event
+    ()
   "Declining sends the RSVP but records no event despite a target function."
   (mu4e-autotask-test--with-rsvp
     (let ((msg (mu4e-autotask-test--request-msg))
           (mu4e-autotask-icalendar-event-target-function
            #'mu4e-autotask-test--nonexistent-target))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-decline
+       msg
+       #'mu4e-autotask-test--choose-decline
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--sent)
       (should-not mu4e-autotask-test--posted)
       (with-current-buffer (mu4e-autotask-test--reply-buffer)
-        (should (string-match-p "PARTSTAT=DECLINED" (buffer-string)))))))
+        (should
+         (string-match-p "PARTSTAT=DECLINED" (buffer-string)))))))
 
 (ert-deftest mu4e-autotask-test-icalendar-rule-takes-precedence ()
   "A matching user rule wins over the built-in handler on a flagged message."
@@ -691,7 +775,8 @@ CN is invalid, so the flow must error rather than compose a broken reply."
     (let* ((mu4e-autotask-test--called nil)
            (msg (mu4e-autotask-test--request-msg))
            (mu4e-autotask-rules
-            '((:sender-exact "org@example.com"
+            '((:sender-exact
+               "org@example.com"
                :action-fn mu4e-autotask-test--record-call))))
       (mu4e-autotask-test--dispatch-rsvp
        msg #'mu4e-autotask-test--choose-quit #'ignore)
@@ -707,12 +792,14 @@ CN is invalid, so the flow must error rather than compose a broken reply."
       (cl-letf (((symbol-function 'message)
                  (lambda (fmt &rest _) (setq reported fmt))))
         (mu4e-autotask-test--dispatch-rsvp
-         msg #'mu4e-autotask-test--choose-accept
+         msg
+         #'mu4e-autotask-test--choose-accept
          #'mu4e-autotask-test--send-running-hooks))
       (should-not mu4e-autotask-test--prompted)
       (should-not mu4e-autotask-test--sent)
       (should
-       (equal reported "No automation rule matched for this message")))))
+       (equal
+        reported "No automation rule matched for this message")))))
 
 (ert-deftest mu4e-autotask-test-icalendar-no-calendar-part-errors ()
   "A flagged message without a text/calendar part signals a `user-error'."
@@ -720,13 +807,14 @@ CN is invalid, so the flow must error rather than compose a broken reply."
     (let* ((file (mu4e-autotask-test--temp-file))
            (msg (mu4e-autotask-test--invite-msg file)))
       (with-temp-file file
-        (insert "From: Org <org@example.com>\n"
-                "To: me@example.com\n"
-                "Subject: Meeting\n"
-                "MIME-Version: 1.0\n"
-                "Content-Type: text/plain\n"
-                "\n"
-                "Just text.\n"))
+        (insert
+         "From: Org <org@example.com>\n"
+         "To: me@example.com\n"
+         "Subject: Meeting\n"
+         "MIME-Version: 1.0\n"
+         "Content-Type: text/plain\n"
+         "\n"
+         "Just text.\n"))
       (should-error (mu4e-autotask-dispatch msg) :type 'user-error))))
 
 (ert-deftest mu4e-autotask-test-icalendar-nested-multipart-parses ()
@@ -775,7 +863,10 @@ the recording to fail afterwards."
                  (lambda (feature &optional filename noerror)
                    (if (eq feature 'org-gcal)
                        nil
-                     (funcall real-require feature filename noerror))))
+                     (funcall real-require
+                              feature
+                              filename
+                              noerror))))
                 ((symbol-function 'read-multiple-choice)
                  #'mu4e-autotask-test--choose-accept)
                 ((symbol-function 'y-or-n-p)
@@ -785,7 +876,9 @@ the recording to fail afterwards."
         (should-error (mu4e-autotask-dispatch msg) :type 'user-error))
       (should-not mu4e-autotask-test--sent))))
 
-(ert-deftest mu4e-autotask-test-icalendar-org-gcal-missing-target-nil-sends-once ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-org-gcal-missing-target-nil-sends-once
+    ()
   "Org-gcal absent with a nil-returning target sends and calls the target once.
 The pre-send org-gcal check resolves the target before the send; the post-send
 hook must reuse that result rather than invoke the side-effecting target again."
@@ -804,7 +897,10 @@ hook must reuse that result rather than invoke the side-effecting target again."
                  (lambda (feature &optional filename noerror)
                    (if (eq feature 'org-gcal)
                        nil
-                     (funcall real-require feature filename noerror))))
+                     (funcall real-require
+                              feature
+                              filename
+                              noerror))))
                 ((symbol-function 'read-multiple-choice)
                  #'mu4e-autotask-test--choose-accept)
                 ((symbol-function 'y-or-n-p)
@@ -816,7 +912,9 @@ hook must reuse that result rather than invoke the side-effecting target again."
       (should (equal calls 1))
       (should-not mu4e-autotask-test--posted))))
 
-(ert-deftest mu4e-autotask-test-icalendar-org-gcal-post-error-becomes-warning ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-org-gcal-post-error-becomes-warning
+    ()
   "A failure in `org-gcal-post-at-point' after the send becomes a warning.
 The RSVP is already sent when recording runs, so a recording failure must
 present as a warning rather than a failed send."
@@ -833,7 +931,8 @@ present as a warning rather than a failed send."
                 ((symbol-function 'message-send-and-exit)
                  #'mu4e-autotask-test--send-running-hooks)
                 ((symbol-function 'org-gcal-post-at-point)
-                 (lambda (&rest _) (error "Google Calendar sync failed")))
+                 (lambda (&rest _)
+                   (error "Google Calendar sync failed")))
                 ((symbol-function 'display-warning)
                  (lambda (type message &optional level &rest _)
                    (push (list type message level) warnings))))
@@ -864,17 +963,22 @@ present as a warning rather than a failed send."
       (should-not target-called)
       (should-not mu4e-autotask-test--posted))))
 
-(ert-deftest mu4e-autotask-test-icalendar-description-sanitized-for-drawer ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-description-sanitized-for-drawer
+    ()
   "Description lines that would corrupt the org-gcal drawer are neutralized."
   (mu4e-autotask-test--with-rsvp
-    (let* ((msg (mu4e-autotask-test--invite-msg
-                 (mu4e-autotask-test--write-invite
-                  "REQUEST" "Line1\\n:END:\\n* Heading")))
+    (let* ((msg
+            (mu4e-autotask-test--invite-msg
+             (mu4e-autotask-test--write-invite
+              "REQUEST"
+              "Line1\\n:END:\\n* Heading")))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (let ((posted mu4e-autotask-test--posted))
         (should posted)
@@ -887,57 +991,73 @@ present as a warning rather than a failed send."
         (should
          (equal
           2
-          (cl-count ":END:" (split-string posted "\n")
-                    :test #'string=)))))))
+          (cl-count
+           ":END:"
+           (split-string posted "\n")
+           :test #'string=)))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-description-trailing-newline-no-blank ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-description-trailing-newline-no-blank
+    ()
   "A DESCRIPTION ending in a newline records without a blank line before :END:.
 RFC 5545 allows a DESCRIPTION whose value ends with a `\\n' escape, decoding
 to a trailing newline; the sanitizer must not leave a blank drawer line."
   (mu4e-autotask-test--with-rsvp
-    (let* ((msg (mu4e-autotask-test--invite-msg
-                 (mu4e-autotask-test--write-invite "REQUEST" "Agenda\\n")))
+    (let* ((msg
+            (mu4e-autotask-test--invite-msg
+             (mu4e-autotask-test--write-invite "REQUEST"
+                                               "Agenda\\n")))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (let ((posted mu4e-autotask-test--posted))
         (should posted)
         (should
-         (string-match-p mu4e-autotask-test--recorded-event-re posted))
+         (string-match-p
+          mu4e-autotask-test--recorded-event-re posted))
         (should-not (string-match-p "\n\n:END:" posted))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-description-all-newline-no-blank ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-description-all-newline-no-blank
+    ()
   "A DESCRIPTION of only newlines records without a blank line before :END:.
 The sanitizer reduces such a value to the empty string, which must not be
 inserted as a blank drawer line."
   (mu4e-autotask-test--with-rsvp
-    (let* ((msg (mu4e-autotask-test--invite-msg
-                 (mu4e-autotask-test--write-invite "REQUEST" "\\n")))
+    (let* ((msg
+            (mu4e-autotask-test--invite-msg
+             (mu4e-autotask-test--write-invite "REQUEST" "\\n")))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (let ((posted mu4e-autotask-test--posted))
         (should posted)
         (should-not (string-match-p "\n\n:END:" posted))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-sanitizer-ignores-case-fold ()
+(ert-deftest mu4e-autotask-test-icalendar-sanitizer-ignores-case-fold
+    ()
   "A lowercase drawer closer is dropped even when case folding is off."
   (mu4e-autotask-test--with-rsvp
-    (let* ((msg (mu4e-autotask-test--invite-msg
-                 (mu4e-autotask-test--write-invite
-                  "REQUEST" "Line1\\n:end:\\nLine2")))
+    (let* ((msg
+            (mu4e-autotask-test--invite-msg
+             (mu4e-autotask-test--write-invite
+              "REQUEST"
+              "Line1\\n:end:\\nLine2")))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file))
            (case-fold-search nil))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (let ((posted mu4e-autotask-test--posted))
         (should posted)
@@ -948,10 +1068,13 @@ inserted as a blank drawer line."
         (should
          (equal
           0
-          (cl-count ":end:" (split-string posted "\n")
-                    :test #'string=)))))))
+          (cl-count
+           ":end:"
+           (split-string posted "\n")
+           :test #'string=)))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-tentative-partstat-and-event ()
+(ert-deftest mu4e-autotask-test-icalendar-tentative-partstat-and-event
+    ()
   "A tentative RSVP replies with PARTSTAT=TENTATIVE and records the event."
   (mu4e-autotask-test--with-rsvp
     (let* ((msg (mu4e-autotask-test--request-msg))
@@ -959,7 +1082,8 @@ inserted as a blank drawer line."
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-tentative
+       msg
+       #'mu4e-autotask-test--choose-tentative
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--posted)
       (with-current-buffer (mu4e-autotask-test--reply-buffer)
@@ -972,7 +1096,8 @@ inserted as a blank drawer line."
     (let ((msg (mu4e-autotask-test--request-msg))
           (mu4e-autotask-icalendar-event-target-function #'ignore))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--sent)
       (should-not mu4e-autotask-test--posted))))
@@ -980,11 +1105,13 @@ inserted as a blank drawer line."
 (ert-deftest mu4e-autotask-test-icalendar-uninvited-still-replies ()
   "An invitation without a matching attendee still produces an RSVP reply."
   (mu4e-autotask-test--with-rsvp
-    (let ((msg (mu4e-autotask-test--invite-msg
-                (mu4e-autotask-test--write-transformed-request
-                 "MAILTO:me@example\\.com" "MAILTO:other@example.com"))))
+    (let ((msg
+           (mu4e-autotask-test--invite-msg
+            (mu4e-autotask-test--write-transformed-request
+             "MAILTO:me@example\\.com" "MAILTO:other@example.com"))))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-recording-content)
       (should mu4e-autotask-test--sent)
       (with-current-buffer (mu4e-autotask-test--reply-buffer)
@@ -997,11 +1124,13 @@ The limit is on the encoded wire form, so the fold must count UTF-8 octets,
 not characters."
   (mu4e-autotask-test--with-rsvp
     (let* ((summary (make-string 60 ?会))
-           (msg (mu4e-autotask-test--invite-msg
-                 (mu4e-autotask-test--write-transformed-request
-                  "SUMMARY:Team meeting" (concat "SUMMARY:" summary)))))
+           (msg
+            (mu4e-autotask-test--invite-msg
+             (mu4e-autotask-test--write-transformed-request
+              "SUMMARY:Team meeting" (concat "SUMMARY:" summary)))))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-recording-content)
       (with-current-buffer (mu4e-autotask-test--reply-buffer)
         (dolist (line (split-string (buffer-string) "\n"))
@@ -1012,23 +1141,27 @@ not characters."
         (should
          (string-match-p
           (concat "^SUMMARY:Accepted: " summary "$")
-          (replace-regexp-in-string
-           "\n " "" (buffer-string))))))))
+          (replace-regexp-in-string "\n " "" (buffer-string))))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-reply-long-line-round-trips ()
+(ert-deftest mu4e-autotask-test-icalendar-reply-long-line-round-trips
+    ()
   "A long ATTENDEE line folds into 75-octet lines and unfolds intact.
 Folding a line repeatedly must keep every physical line within the limit,
 mark each continuation with exactly one leading space, and lose nothing."
   (mu4e-autotask-test--with-rsvp
     (let* ((cn (make-string 130 ?x))
            (attendee
-            (concat "ATTENDEE;RSVP=TRUE;PARTSTAT=ACCEPTED;CN=" cn
-                    ":MAILTO:me@example.com"))
-           (msg (mu4e-autotask-test--invite-msg
-                 (mu4e-autotask-test--write-transformed-request
-                  "CN=Me" (concat "CN=" cn)))))
+            (concat
+             "ATTENDEE;RSVP=TRUE;PARTSTAT=ACCEPTED;CN="
+             cn
+             ":MAILTO:me@example.com"))
+           (msg
+            (mu4e-autotask-test--invite-msg
+             (mu4e-autotask-test--write-transformed-request
+              "CN=Me" (concat "CN=" cn)))))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-recording-content)
       (with-current-buffer (mu4e-autotask-test--reply-buffer)
         (dolist (line (split-string (buffer-string) "\n"))
@@ -1039,27 +1172,32 @@ mark each continuation with exactly one leading space, and lose nothing."
         (should
          (string-match-p
           (concat "^" (regexp-quote attendee) "$")
-          (replace-regexp-in-string
-           "\n " "" (buffer-string))))))))
+          (replace-regexp-in-string "\n " "" (buffer-string))))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-location-collapsed-to-one-line ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-location-collapsed-to-one-line
+    ()
   "A multi-line event location lands in the LOCATION property on one line."
   (mu4e-autotask-test--with-rsvp
-    (let* ((file (mu4e-autotask-test--write-transformed-request
-                  "LOCATION:Room 5" "LOCATION:Room 5\\\\nFloor 2"))
+    (let* ((file
+            (mu4e-autotask-test--write-transformed-request
+             "LOCATION:Room 5" "LOCATION:Room 5\\\\nFloor 2"))
            (msg (mu4e-autotask-test--invite-msg file))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--posted)
       (should
-       (string-match-p "^:LOCATION: Room 5, Floor 2$"
-                       mu4e-autotask-test--posted)))))
+       (string-match-p
+        "^:LOCATION: Room 5, Floor 2$" mu4e-autotask-test--posted)))))
 
-(ert-deftest mu4e-autotask-test-icalendar-custom-org-gcal-names-honored ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-custom-org-gcal-names-honored
+    ()
   "Customized org-gcal drawer and property names are used in the entry."
   (mu4e-autotask-test--with-rsvp
     (let* ((msg (mu4e-autotask-test--request-msg))
@@ -1069,7 +1207,8 @@ mark each continuation with exactly one leading space, and lose nothing."
            (org-gcal-drawer-name "custom-drawer")
            (org-gcal-calendar-id-property "gcal-id"))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (let ((posted mu4e-autotask-test--posted))
         (should posted)
@@ -1078,17 +1217,21 @@ mark each continuation with exactly one leading space, and lose nothing."
         (should-not (string-match-p "^:calendar-id:" posted))
         (should-not (string-match-p "^:org-gcal:$" posted))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-multiline-summary-collapsed ()
+(ert-deftest mu4e-autotask-test-icalendar-multiline-summary-collapsed
+    ()
   "A multi-line event summary lands in the org heading on one line."
   (mu4e-autotask-test--with-rsvp
-    (let* ((file (mu4e-autotask-test--write-transformed-request
-                  "SUMMARY:Team meeting" "SUMMARY:Team meeting\\\\nRoom 9"))
+    (let* ((file
+            (mu4e-autotask-test--write-transformed-request
+             "SUMMARY:Team meeting"
+             "SUMMARY:Team meeting\\\\nRoom 9"))
            (msg (mu4e-autotask-test--invite-msg file))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--posted)
       (should
@@ -1096,44 +1239,57 @@ mark each continuation with exactly one leading space, and lose nothing."
         "^\\* Team meeting, Room 9\n:PROPERTIES:$"
         mu4e-autotask-test--posted)))))
 
-(ert-deftest mu4e-autotask-test-icalendar-no-summary-falls-back-to-subject ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-no-summary-falls-back-to-subject
+    ()
   "An invitation without SUMMARY titles the event after the message subject."
   (mu4e-autotask-test--with-rsvp
-    (let* ((file (mu4e-autotask-test--write-transformed-request
-                  "SUMMARY:Team meeting\n" ""))
+    (let* ((file
+            (mu4e-autotask-test--write-transformed-request
+             "SUMMARY:Team meeting\n" ""))
            (msg (mu4e-autotask-test--invite-msg file))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--posted)
       (should
-       (string-match-p "^\\* Meeting\n:PROPERTIES:$"
-                       mu4e-autotask-test--posted)))))
+       (string-match-p
+        "^\\* Meeting\n:PROPERTIES:$" mu4e-autotask-test--posted)))))
 
-(ert-deftest mu4e-autotask-test-icalendar-no-summary-no-subject-no-title ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-no-summary-no-subject-no-title
+    ()
   "With a blank SUMMARY and a blank Subject the event is titled (no title)."
   (mu4e-autotask-test--with-rsvp
-    (let* ((file (mu4e-autotask-test--write-transformed-request
-                  "SUMMARY:Team meeting\n" ""))
-           (msg `(:path ,file
-                  :from ((:email "org@example.com"))
-                  :subject ""
-                  :flags (seen calendar)))
+    (let* ((file
+            (mu4e-autotask-test--write-transformed-request
+             "SUMMARY:Team meeting\n" ""))
+           (msg
+            `(:path
+              ,file
+              :from ((:email "org@example.com"))
+              :subject ""
+              :flags (seen calendar)))
            (org-file (mu4e-autotask-test--temp-file ".org"))
            (mu4e-autotask-icalendar-event-target-function
             (mu4e-autotask-test--target-for org-file)))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-running-hooks)
       (should mu4e-autotask-test--posted)
       (should
-       (string-match-p "^\\* (no title)\n:PROPERTIES:$"
-                       mu4e-autotask-test--posted)))))
+       (string-match-p
+        "^\\* (no title)\n:PROPERTIES:$"
+        mu4e-autotask-test--posted)))))
 
-(ert-deftest mu4e-autotask-test-icalendar-event-respects-narrowed-buffer ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-event-respects-narrowed-buffer
+    ()
   "Recording appends at true end-of-file despite a narrowed visiting buffer.
 The pre-visited buffer's restriction and point are restored afterwards."
   (mu4e-autotask-test--with-rsvp
@@ -1149,7 +1305,8 @@ The pre-visited buffer's restriction and point are restored afterwards."
           (narrow-to-region 12 22)
           (goto-char 15))
         (mu4e-autotask-test--dispatch-rsvp
-         msg #'mu4e-autotask-test--choose-accept
+         msg
+         #'mu4e-autotask-test--choose-accept
          #'mu4e-autotask-test--send-running-hooks)
         (should
          (string-prefix-p
@@ -1162,7 +1319,8 @@ The pre-visited buffer's restriction and point are restored afterwards."
           (should (equal (point-max) 22))
           (should (equal (point) 15)))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-event-unsaved-buffer-refused ()
+(ert-deftest mu4e-autotask-test-icalendar-event-unsaved-buffer-refused
+    ()
   "Recording refuses when the target file's buffer has unsaved edits.
 Accepting an invitation must not silently save the user's unrelated edits;
 the refusal surfaces as the follow-up warning and the file stays untouched."
@@ -1183,34 +1341,42 @@ the refusal surfaces as the follow-up warning and the file stays untouched."
                        (lambda (type message &optional level &rest _)
                          (push (list type message level) warnings))))
               (mu4e-autotask-test--dispatch-rsvp
-               msg #'mu4e-autotask-test--choose-accept
+               msg
+               #'mu4e-autotask-test--choose-accept
                #'mu4e-autotask-test--send-running-hooks))
             (should (equal (length warnings) 1))
             (should (eq (nth 0 (car warnings)) 'mu4e-autotask))
             (should (string-match-p "unsaved" (nth 1 (car warnings))))
             (should (eq (nth 2 (car warnings)) :error))
             (should-not mu4e-autotask-test--posted)
-            (should (buffer-modified-p (find-buffer-visiting org-file)))
-            (should (equal (with-temp-buffer
-                             (insert-file-contents org-file)
-                             (buffer-string))
-                           "* Existing\n")))
+            (should
+             (buffer-modified-p (find-buffer-visiting org-file)))
+            (should
+             (equal
+              (with-temp-buffer
+                (insert-file-contents org-file)
+                (buffer-string))
+              "* Existing\n")))
         ;; Clear the deliberate modification so cleanup's `kill-buffer'
         ;; does not prompt.
         (with-current-buffer (find-buffer-visiting org-file)
           (set-buffer-modified-p nil))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-no-organizer-uses-reply-to ()
+(ert-deftest mu4e-autotask-test-icalendar-no-organizer-uses-reply-to
+    ()
   "Without an ORGANIZER property, the RSVP goes to the message's Reply-To."
   (mu4e-autotask-test--with-rsvp
     (let* ((file (mu4e-autotask-test--write-invite "REQUEST" nil t))
-           (msg `(:path ,file
-                  :from ((:email "sender@example.com"))
-                  :reply-to ((:email "replyto@example.com"))
-                  :subject "Meeting"
-                  :flags (seen calendar))))
+           (msg
+            `(:path
+              ,file
+              :from ((:email "sender@example.com"))
+              :reply-to ((:email "replyto@example.com"))
+              :subject "Meeting"
+              :flags (seen calendar))))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-recording-content)
       (should mu4e-autotask-test--sent)
       (should
@@ -1220,18 +1386,22 @@ the refusal surfaces as the follow-up warning and the file stays untouched."
   "Without ORGANIZER and Reply-To, the RSVP goes to the message's From."
   (mu4e-autotask-test--with-rsvp
     (let* ((file (mu4e-autotask-test--write-invite "REQUEST" nil t))
-           (msg `(:path ,file
-                  :from ((:email "sender@example.com"))
-                  :subject "Meeting"
-                  :flags (seen calendar))))
+           (msg
+            `(:path
+              ,file
+              :from ((:email "sender@example.com"))
+              :subject "Meeting"
+              :flags (seen calendar))))
       (mu4e-autotask-test--dispatch-rsvp
-       msg #'mu4e-autotask-test--choose-accept
+       msg
+       #'mu4e-autotask-test--choose-accept
        #'mu4e-autotask-test--send-recording-content)
       (should mu4e-autotask-test--sent)
       (should
        (equal mu4e-autotask-test--draft-to "sender@example.com")))))
 
-(ert-deftest mu4e-autotask-test-icalendar-organizer-all-absent-errors ()
+(ert-deftest mu4e-autotask-test-icalendar-organizer-all-absent-errors
+    ()
   "Organizer resolution errors when ORGANIZER, Reply-To, and From are absent.
 `mu4e-autotask-dispatch' asserts a string sender from `:from' before the RSVP
 path runs, and the organizer falls back to that same `:from', so this guard is
@@ -1239,18 +1409,24 @@ unreachable through dispatch; exercise `mu4e-autotask--icalendar-organizer'
 directly."
   (mu4e-autotask-test--with-rsvp
     (let* ((file (mu4e-autotask-test--write-invite "REQUEST" nil t))
-           (msg `(:path ,file
-                  :from nil
-                  :subject "Meeting"
-                  :flags (seen calendar))))
-      (mu4e-autotask--with-mime-handle (handle msg "text/calendar")
-        (let ((event (gnus-icalendar-event-from-handle
-                      handle (mu4e-personal-addresses 'no-regexp))))
-          (should-error
-           (mu4e-autotask--icalendar-organizer msg event)
-           :type 'user-error))))))
+           (msg
+            `(:path
+              ,file
+              :from nil
+              :subject "Meeting"
+              :flags (seen calendar))))
+      (mu4e-autotask--with-mime-handle
+       (handle msg "text/calendar")
+       (let ((event
+              (gnus-icalendar-event-from-handle
+               handle (mu4e-personal-addresses 'no-regexp))))
+         (should-error
+          (mu4e-autotask--icalendar-organizer msg event)
+          :type 'user-error))))))
 
-(ert-deftest mu4e-autotask-test-icalendar-second-rsvp-keeps-pending-reply ()
+(ert-deftest
+    mu4e-autotask-test-icalendar-second-rsvp-keeps-pending-reply
+    ()
   "A second RSVP must not clobber a pending draft's calendar payload.
 mml resolves buffer-attached parts at send time, so each RSVP needs its own
 reply buffer: with a shared buffer, a draft surviving past the flow (a
@@ -1260,15 +1436,17 @@ failed or quit send) would mail the next invitation's reply instead."
       ;; The send stand-in does nothing: draft A stays pending.
       (mu4e-autotask-test--dispatch-rsvp
        msg-a #'mu4e-autotask-test--choose-accept #'ignore)
-      (let ((draft-a mu4e-autotask-test--draft-buffer)
-            ;; Only one reply buffer exists after the first dispatch (the
-            ;; `#'ignore' send left draft A pending); grab it directly
-            ;; rather than parsing the draft's mml attachment markup.
-            (reply-buffer-a (mu4e-autotask-test--reply-buffer)))
+      (let
+          ((draft-a mu4e-autotask-test--draft-buffer)
+           ;; Only one reply buffer exists after the first dispatch (the
+           ;; `#'ignore' send left draft A pending); grab it directly
+           ;; rather than parsing the draft's mml attachment markup.
+           (reply-buffer-a (mu4e-autotask-test--reply-buffer)))
         (unwind-protect
-            (let ((msg-b (mu4e-autotask-test--invite-msg
-                          (mu4e-autotask-test--write-transformed-request
-                           "UID:test-uid-1" "UID:test-uid-2"))))
+            (let ((msg-b
+                   (mu4e-autotask-test--invite-msg
+                    (mu4e-autotask-test--write-transformed-request
+                     "UID:test-uid-1" "UID:test-uid-2"))))
               (mu4e-autotask-test--dispatch-rsvp
                msg-b #'mu4e-autotask-test--choose-accept #'ignore)
               (with-current-buffer reply-buffer-a
@@ -1291,13 +1469,19 @@ failed or quit send) would mail the next invitation's reply instead."
   "The template constructor and accessors round-trip the slot values."
   (let ((tmpl
          (make-mu4e-autotask-email-template
-          :context "ctx" :to "a@b" :subject "Subj" :body "Body")))
+          :context "ctx"
+          :to "a@b"
+          :subject "Subj"
+          :body "Body")))
     (should (equal (mu4e-autotask-email-template-context tmpl) "ctx"))
     (should (equal (mu4e-autotask-email-template-to tmpl) "a@b"))
-    (should (equal (mu4e-autotask-email-template-subject tmpl) "Subj"))
+    (should
+     (equal (mu4e-autotask-email-template-subject tmpl) "Subj"))
     (should (equal (mu4e-autotask-email-template-body tmpl) "Body"))))
 
-(ert-deftest mu4e-autotask-test-email-template-string-slots-default-empty ()
+(ert-deftest
+    mu4e-autotask-test-email-template-string-slots-default-empty
+    ()
   "Omitted string slots default to an empty string, matching `:type string'."
   (let ((tmpl (make-mu4e-autotask-email-template)))
     (should (equal (mu4e-autotask-email-template-context tmpl) ""))
@@ -1330,33 +1514,44 @@ would strip CR and reinterpret high bytes."
         (progn
           (let ((coding-system-for-write 'no-conversion))
             (write-region bytes nil file))
-          (should (equal (mu4e-autotask-raw-message `(:path ,file)) bytes)))
+          (should
+           (equal (mu4e-autotask-raw-message `(:path ,file)) bytes)))
       (delete-file file))))
 
 (ert-deftest mu4e-autotask-test-msg-content ()
   "Content accessors return the decoded body of the matching MIME part."
   (mu4e-autotask-test--with-cleanup
     (let ((mu4e-autotask-test--parts
-           `((:mime-type "text/plain"
-              :handle ,(mu4e-autotask-test--handle "plain text"))
-             (:mime-type "text/html"
-              :handle ,(mu4e-autotask-test--handle "<p>html</p>" "text/html")))))
+           `((:mime-type
+              "text/plain"
+              :handle
+              ,(mu4e-autotask-test--handle "plain text"))
+             (:mime-type
+              "text/html"
+              :handle
+              ,(mu4e-autotask-test--handle "<p>html</p>"
+                                           "text/html")))))
       (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                  #'mu4e-autotask-test--mime-parts))
         (should (equal (mu4e-autotask-text-content) "plain text"))
         (should (equal (mu4e-autotask-html-content) "<p>html</p>"))
         (should
-         (equal (mu4e-autotask-msg-content "text/plain") "plain text"))))))
+         (equal
+          (mu4e-autotask-msg-content "text/plain") "plain text"))))))
 
 (ert-deftest mu4e-autotask-test-msg-content-missing-errors ()
   "Content accessors signal a `user-error' when the MIME type is absent."
   (mu4e-autotask-test--with-cleanup
     (let ((mu4e-autotask-test--parts
-           `((:mime-type "text/plain"
-              :handle ,(mu4e-autotask-test--handle "plain text")))))
+           `((:mime-type
+              "text/plain"
+              :handle
+              ,(mu4e-autotask-test--handle "plain text")))))
       (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                  #'mu4e-autotask-test--mime-parts))
-        (should-error (mu4e-autotask-html-content) :type 'user-error)))))
+        (should-error
+         (mu4e-autotask-html-content)
+         :type 'user-error)))))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-group-1 ()
   "`mu4e-autotask-browse-url-matching' visits capture group 1 and returns it.
@@ -1366,7 +1561,8 @@ It also reports the visited URL with an \"Opening <url>\" message."
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse)
               ((symbol-function 'message)
-               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+               (lambda (fmt &rest args)
+                 (setq reported (apply #'format fmt args)))))
       (should
        (equal
         (mu4e-autotask-browse-url-matching
@@ -1375,7 +1571,8 @@ It also reports the visited URL with an \"Opening <url>\" message."
       (should (equal mu4e-autotask-test--browsed "https://a.b/p"))
       (should (equal reported "Opening https://a.b/p")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-strips-soft-breaks ()
+(ert-deftest mu4e-autotask-test-browse-url-matching-strips-soft-breaks
+    ()
   "`mu4e-autotask-browse-url-matching' strips quoted-printable soft line breaks.
 A trailing = before a CRLF or LF is removed from the matched URL, repairing a
 fold that REGEXP already spanned because its URL character class (here `[^>]')
@@ -1385,14 +1582,16 @@ admits the newline."
                #'mu4e-autotask-test--record-browse))
       (mu4e-autotask-browse-url-matching
        "href=\\(https://[^>]+\\)>" "href=https://c.gle/AA=\r\nBB>")
-      (should (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
+      (should
+       (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-decodes-amp ()
   "`mu4e-autotask-browse-url-matching' decodes the =&amp;= entity in the URL."
   (let ((mu4e-autotask-test--browsed 'unset))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse))
-      (mu4e-autotask-browse-url-matching "\\(https://[^ ]+\\)" "https://x/a&amp;b")
+      (mu4e-autotask-browse-url-matching
+       "\\(https://[^ ]+\\)" "https://x/a&amp;b")
       (should (equal mu4e-autotask-test--browsed "https://x/a&b")))))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-group-0 ()
@@ -1408,14 +1607,15 @@ admits the newline."
       (should (equal mu4e-autotask-test--browsed "https://a.b/x")))))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-no-match ()
-  "`mu4e-autotask-browse-url-matching' returns nil and does not browse on no match.
+  "Return nil and do not browse when `mu4e-autotask-browse-url-matching' misses.
 The miss message names the DESCRIPTION."
   (let ((mu4e-autotask-test--browsed 'unset)
         (reported nil))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse)
               ((symbol-function 'message)
-               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+               (lambda (fmt &rest args)
+                 (setq reported (apply #'format fmt args)))))
       (should
        (null
         (mu4e-autotask-browse-url-matching
@@ -1423,29 +1623,40 @@ The miss message names the DESCRIPTION."
       (should (eq mu4e-autotask-test--browsed 'unset))
       (should (equal reported "Could not find the Example link")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-no-match-default-description ()
-  "On no match with DESCRIPTION omitted, the miss message uses the \"URL\" default."
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-no-match-default-description
+    ()
+  "With DESCRIPTION omitted, a miss message uses the \"URL\" default."
   (let ((mu4e-autotask-test--browsed 'unset)
         (reported nil))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse)
               ((symbol-function 'message)
-               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
-      (should (null (mu4e-autotask-browse-url-matching "https://[^ ]+" "no url here")))
+               (lambda (fmt &rest args)
+                 (setq reported (apply #'format fmt args)))))
+      (should
+       (null
+        (mu4e-autotask-browse-url-matching
+         "https://[^ ]+" "no url here")))
       (should (eq mu4e-autotask-test--browsed 'unset))
       (should (equal reported "Could not find the URL")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-strips-soft-breaks-lf ()
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-strips-soft-breaks-lf
+    ()
   "A bare-LF quoted-printable soft break (=\\n, no CR) is removed from the URL."
   (let ((mu4e-autotask-test--browsed 'unset))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse))
       (mu4e-autotask-browse-url-matching
        "href=\\(https://[^>]+\\)>" "href=https://c.gle/AA=\nBB>")
-      (should (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
+      (should
+       (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-strips-bare-newline ()
-  "A bare CR/LF (no preceding =) inside the captured URL is removed, not browsed."
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-strips-bare-newline
+    ()
+  "A bare CR/LF (no preceding =) in the captured URL is removed, not browsed."
   (let ((mu4e-autotask-test--browsed 'unset))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse))
@@ -1453,7 +1664,9 @@ The miss message names the DESCRIPTION."
        "href=\\(https://[^>]+\\)>" "href=https://a.b/x\r\ny>")
       (should (equal mu4e-autotask-test--browsed "https://a.b/xy")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-soft-break-splitting-amp ()
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-soft-break-splitting-amp
+    ()
   "Soft-break stripping runs before `&amp;' decoding.
 A soft break that splits the `&amp;' entity is repaired first, so the entity
 then decodes to a single `&'."
@@ -1473,21 +1686,30 @@ empty URL."
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse)
               ((symbol-function 'message)
-               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
-      (should (null (mu4e-autotask-browse-url-matching "x\\(y*\\)" "x" "thing")))
+               (lambda (fmt &rest args)
+                 (setq reported (apply #'format fmt args)))))
+      (should
+       (null
+        (mu4e-autotask-browse-url-matching "x\\(y*\\)" "x" "thing")))
       (should (eq mu4e-autotask-test--browsed 'unset))
       (should (equal reported "Could not find the thing")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-nonparticipating-group ()
-  "A matching REGEXP whose capture group did not participate takes the miss path.
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-nonparticipating-group
+    ()
+  "A REGEXP match whose capture group did not participate takes the miss path.
 The nil capture must not crash; it falls through to the miss branch."
   (let ((mu4e-autotask-test--browsed 'unset)
         (reported nil))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse)
               ((symbol-function 'message)
-               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
-      (should (null (mu4e-autotask-browse-url-matching "a\\(b\\)?c" "ac" "thing")))
+               (lambda (fmt &rest args)
+                 (setq reported (apply #'format fmt args)))))
+      (should
+       (null
+        (mu4e-autotask-browse-url-matching
+         "a\\(b\\)?c" "ac" "thing")))
       (should (eq mu4e-autotask-test--browsed 'unset))
       (should (equal reported "Could not find the thing")))))
 
@@ -1496,18 +1718,21 @@ The nil capture must not crash; it falls through to the miss branch."
 With `case-fold-search' bound to t, a case-mismatched REGEXP does not match and
 a literal `&AMP;' is left undecoded."
   (let ((mu4e-autotask-test--browsed 'unset)
-        (reported nil)
         (case-fold-search t))
     (cl-letf (((symbol-function 'browse-url)
                #'mu4e-autotask-test--record-browse)
-              ((symbol-function 'message)
-               (lambda (fmt &rest args) (setq reported (apply #'format fmt args)))))
+              ((symbol-function 'message) (lambda (&rest _args) nil)))
       ;; Case-mismatched scheme does not match under case-sensitive search.
-      (should (null (mu4e-autotask-browse-url-matching "HTTPS://[^ ]+" "see https://a.b/x" nil 0)))
+      (should
+       (null
+        (mu4e-autotask-browse-url-matching
+         "HTTPS://[^ ]+" "see https://a.b/x" nil 0)))
       (should (eq mu4e-autotask-test--browsed 'unset))
       ;; `&AMP;' is not the `&amp;' entity, so it is left intact.
-      (mu4e-autotask-browse-url-matching "\\(https://[^ ]+\\)" "https://x/a&AMP;b")
-      (should (equal mu4e-autotask-test--browsed "https://x/a&AMP;b")))))
+      (mu4e-autotask-browse-url-matching
+       "\\(https://[^ ]+\\)" "https://x/a&AMP;b")
+      (should
+       (equal mu4e-autotask-test--browsed "https://x/a&AMP;b")))))
 
 (ert-deftest mu4e-autotask-test-when-body-matches-runs-action ()
   "`mu4e-autotask-when-body-matches' calls ACTION with MSG on a body match.
@@ -1523,7 +1748,9 @@ It returns ACTION's value."
              (eq
               (mu4e-autotask-when-body-matches
                msg "epaslaugos\\.lt"
-               (lambda (m) (setq seen m) 'done))
+               (lambda (m)
+                 (setq seen m)
+                 'done))
               'done))
             (should (eq seen msg))))
       (delete-file file))))
@@ -1544,16 +1771,20 @@ On no match it returns nil and never calls ACTION."
             (should
              (null
               (mu4e-autotask-when-body-matches
-               `(:path ,file) "epaslaugos\\.lt"
+               `(:path ,file)
+               "epaslaugos\\.lt"
                (lambda (_m) (setq called t))
                "Not for epaslaugos.lt; nothing to do")))
             (should-not called)
             (should
-             (equal reported "Not for epaslaugos.lt; nothing to do"))))
+             (equal
+              reported "Not for epaslaugos.lt; nothing to do"))))
       (delete-file file))))
 
-(ert-deftest mu4e-autotask-test-when-body-matches-silent-without-skip-message ()
-  "`mu4e-autotask-when-body-matches' is silent on no match when SKIP-MESSAGE is nil."
+(ert-deftest
+    mu4e-autotask-test-when-body-matches-silent-without-skip-message
+    ()
+  "Stay silent on no match when SKIP-MESSAGE is nil."
   (let ((file (make-temp-file "mu4e-autotask-test"))
         (messaged nil))
     (unwind-protect
@@ -1577,23 +1808,26 @@ A marker present only in a header still fires ACTION."
     (unwind-protect
         (progn
           (with-temp-file file
-            (insert "From: alerts@example.com\n"
-                    "X-Environment: env=production\n"
-                    "Subject: alert\n"
-                    "\n"
-                    "Body has no marker here.\n"))
+            (insert
+             "From: alerts@example.com\n"
+             "X-Environment: env=production\n"
+             "Subject: alert\n"
+             "\n"
+             "Body has no marker here.\n"))
           (should
            (eq
             (mu4e-autotask-when-body-matches
              `(:path ,file) "env=production"
-             (lambda (_m) (setq fired t) 'done))
+             (lambda (_m)
+               (setq fired t)
+               'done))
             'done))
           (should fired))
       (delete-file file))))
 
 (ert-deftest mu4e-autotask-test-when-body-matches-case-sensitive ()
   "`mu4e-autotask-when-body-matches' matches case-sensitively, ignoring folding.
-A case-mismatched marker does not fire ACTION even when `case-fold-search' is t."
+A case-mismatched marker does not fire ACTION under `case-fold-search'."
   (let ((file (make-temp-file "mu4e-autotask-test"))
         (called nil)
         (case-fold-search t))
@@ -1604,7 +1838,8 @@ A case-mismatched marker does not fire ACTION even when `case-fold-search' is t.
           (should
            (null
             (mu4e-autotask-when-body-matches
-             `(:path ,file) "env=production"
+             `(:path ,file)
+             "env=production"
              (lambda (_m) (setq called t)))))
           (should-not called))
       (delete-file file))))
@@ -1623,7 +1858,8 @@ A case-mismatched marker does not fire ACTION even when `case-fold-search' is t.
 
 (ert-deftest mu4e-autotask-test-csv-part-missing-errors ()
   "`mu4e-autotask-csv-part' signals a `user-error' when none is present."
-  (let ((mu4e-autotask-test--parts '((:filename "a.txt" :attachment-like t))))
+  (let ((mu4e-autotask-test--parts
+         '((:filename "a.txt" :attachment-like t))))
     (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                #'mu4e-autotask-test--mime-parts))
       (should-error (mu4e-autotask-csv-part) :type 'user-error))))
@@ -1637,8 +1873,10 @@ A case-mismatched marker does not fire ACTION even when `case-fold-search' is t.
                #'mu4e-autotask-test--mime-parts))
       (should
        (equal
-        (mu4e-autotask-pdf-part) '(:filename "b.pdf" :attachment-like t)))))
-  (let ((mu4e-autotask-test--parts '((:filename "a.txt" :attachment-like t))))
+        (mu4e-autotask-pdf-part)
+        '(:filename "b.pdf" :attachment-like t)))))
+  (let ((mu4e-autotask-test--parts
+         '((:filename "a.txt" :attachment-like t))))
     (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                #'mu4e-autotask-test--mime-parts))
       (should-not (mu4e-autotask-pdf-part)))))
@@ -1649,8 +1887,11 @@ A case-mismatched marker does not fire ACTION even when `case-fold-search' is t.
     (let ((dir (make-temp-file "mu4e-autotask-test" t)))
       (unwind-protect
           (let* ((part
-                  `(:target-dir ,dir :filename "out.txt"
-                    :handle ,(mu4e-autotask-test--handle "saved content")))
+                  `(:target-dir
+                    ,dir
+                    :filename "out.txt"
+                    :handle
+                    ,(mu4e-autotask-test--handle "saved content")))
                  (path (mu4e-autotask-save-part-file part)))
             (should (equal path (mu4e-join-paths dir "out.txt")))
             (should
@@ -1668,8 +1909,12 @@ A case-mismatched marker does not fire ACTION even when `case-fold-search' is t.
       (unwind-protect
           (let ((mu4e-autotask-test--parts
                  `((:filename "notes.txt" :attachment-like t)
-                   (:target-dir ,dir :filename "data.csv" :attachment-like t
-                    :handle ,(mu4e-autotask-test--handle "a,b,c")))))
+                   (:target-dir
+                    ,dir
+                    :filename "data.csv"
+                    :attachment-like t
+                    :handle
+                    ,(mu4e-autotask-test--handle "a,b,c")))))
             (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                        #'mu4e-autotask-test--mime-parts))
               (let ((path (mu4e-autotask-save-csv-part)))
@@ -1685,33 +1930,48 @@ A case-mismatched marker does not fire ACTION even when `case-fold-search' is t.
 (ert-deftest mu4e-autotask-test-for-each-attachment ()
   "`mu4e-autotask-for-each-attachment' calls FN with handle and target path."
   (let ((mu4e-autotask-test--parts
-         '((:target-dir "/tmp" :filename "a.txt" :handle h1
+         '((:target-dir
+            "/tmp"
+            :filename "a.txt"
+            :handle h1
             :attachment-like t)
-           (:target-dir "/tmp" :filename "b.jpg" :handle h2
+           (:target-dir
+            "/tmp"
+            :filename "b.jpg"
+            :handle h2
             :attachment-like t)))
         (mu4e-autotask-test--saved nil))
     (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                #'mu4e-autotask-test--mime-parts))
-      (mu4e-autotask-for-each-attachment #'mu4e-autotask-test--record-save))
+      (mu4e-autotask-for-each-attachment
+       #'mu4e-autotask-test--record-save))
     (should
      (equal
       (nreverse mu4e-autotask-test--saved)
       `((h1 . ,(mu4e-join-paths "/tmp" "a.txt"))
         (h2 . ,(mu4e-join-paths "/tmp" "b.jpg")))))))
 
-(ert-deftest mu4e-autotask-test-for-each-attachment-skips-body-parts ()
+(ert-deftest mu4e-autotask-test-for-each-attachment-skips-body-parts
+    ()
   "`mu4e-autotask-for-each-attachment' skips non-attachment body parts.
 mu4e marks inline body parts with a nil `:attachment-like' and invents a
 filename for them; FN must not be called for those."
   (let ((mu4e-autotask-test--parts
-         '((:target-dir "/tmp" :filename "mime-part-01" :handle body
+         '((:target-dir
+            "/tmp"
+            :filename "mime-part-01"
+            :handle body
             :attachment-like nil)
-           (:target-dir "/tmp" :filename "a.txt" :handle h1
+           (:target-dir
+            "/tmp"
+            :filename "a.txt"
+            :handle h1
             :attachment-like t)))
         (mu4e-autotask-test--saved nil))
     (cl-letf (((symbol-function 'mu4e-view-mime-parts)
                #'mu4e-autotask-test--mime-parts))
-      (mu4e-autotask-for-each-attachment #'mu4e-autotask-test--record-save))
+      (mu4e-autotask-for-each-attachment
+       #'mu4e-autotask-test--record-save))
     (should
      (equal
       (nreverse mu4e-autotask-test--saved)
@@ -1720,9 +1980,15 @@ filename for them; FN must not be called for those."
 (ert-deftest mu4e-autotask-test-open-all-attachments ()
   "`mu4e-autotask-open-all-attachments' saves, opens, deletes matching parts."
   (let ((mu4e-autotask-test--parts
-         '((:target-dir "/tmp" :filename "a.pdf" :handle hp
+         '((:target-dir
+            "/tmp"
+            :filename "a.pdf"
+            :handle hp
             :attachment-like t)
-           (:target-dir "/tmp" :filename "b.txt" :handle ht
+           (:target-dir
+            "/tmp"
+            :filename "b.txt"
+            :handle ht
             :attachment-like t)))
         (mu4e-autotask-test--saved nil)
         (opened nil)
@@ -1733,7 +1999,8 @@ filename for them; FN must not be called for those."
                #'mu4e-autotask-test--record-save)
               ((symbol-function 'mu4e-autotask--open-file)
                (lambda (path) (push path opened)))
-              ((symbol-function 'mu4e-autotask--delete-file-after-delay)
+              ((symbol-function
+                'mu4e-autotask--delete-file-after-delay)
                (lambda (path _delay) (push path deleted))))
       (mu4e-autotask-open-all-attachments ".pdf"))
     (should
@@ -1746,9 +2013,15 @@ filename for them; FN must not be called for those."
 (ert-deftest mu4e-autotask-test-download-all-jpgs ()
   "`mu4e-autotask-download-all-jpgs' saves only the .jpg attachments."
   (let ((mu4e-autotask-test--parts
-         '((:target-dir "/tmp" :filename "a.jpg" :handle hj
+         '((:target-dir
+            "/tmp"
+            :filename "a.jpg"
+            :handle hj
             :attachment-like t)
-           (:target-dir "/tmp" :filename "b.pdf" :handle hp
+           (:target-dir
+            "/tmp"
+            :filename "b.pdf"
+            :handle hp
             :attachment-like t)))
         (mu4e-autotask-test--saved nil))
     (cl-letf (((symbol-function 'mu4e-view-mime-parts)
@@ -1767,41 +2040,49 @@ filename for them; FN must not be called for those."
   "`mu4e-autotask-send-email' threads the template and wires the success fn."
   (let* ((tmpl
           (make-mu4e-autotask-email-template
-           :context "ctx" :to "to@x" :subject "Subj" :body "Body text"))
+           :context "ctx"
+           :to "to@x"
+           :subject "Subj"
+           :body "Body text"))
          (events nil)
          (draft-buffer nil)
          (success (lambda () (push 'success events))))
-    (cl-letf (((symbol-function 'mu4e-context-switch)
-               (lambda (_force name) (push `(context ,name) events)))
-              ;; Mirror the real `mu4e-compose-new', which leaves a new draft
-              ;; buffer current, so the test pins that the body lands there.
-              ((symbol-function 'mu4e-compose-new)
-               (lambda (to subject)
-                 (push `(compose ,to ,subject) events)
-                 (setq draft-buffer (generate-new-buffer " *draft*"))
-                 (set-buffer draft-buffer)))
-              ((symbol-function 'message-goto-body)
-               (lambda () (push '(goto-body) events) nil))
-              ((symbol-function 'mml-attach-file)
-               (lambda (f) (push `(attach ,f) events)))
-              ((symbol-function 'message-field-value)
-               #'mu4e-autotask-test--message-subject)
-              ((symbol-function 'y-or-n-p)
-               #'mu4e-autotask-test--confirm-send)
-              ((symbol-function 'message-send-and-exit)
-               (lambda ()
-                 (push '(send) events)
-                 (run-hooks 'message-sent-hook))))
+    (cl-letf
+        (((symbol-function 'mu4e-context-switch)
+          (lambda (_force name) (push `(context ,name) events)))
+         ;; Mirror the real `mu4e-compose-new', which leaves a new draft
+         ;; buffer current, so the test pins that the body lands there.
+         ((symbol-function 'mu4e-compose-new)
+          (lambda (to subject)
+            (push `(compose ,to ,subject) events)
+            (setq draft-buffer (generate-new-buffer " *draft*"))
+            (set-buffer draft-buffer)))
+         ((symbol-function 'message-goto-body)
+          (lambda ()
+            (push '(goto-body) events)
+            nil))
+         ((symbol-function 'mml-attach-file)
+          (lambda (f) (push `(attach ,f) events)))
+         ((symbol-function 'message-field-value)
+          #'mu4e-autotask-test--message-subject)
+         ((symbol-function 'y-or-n-p)
+          #'mu4e-autotask-test--confirm-send)
+         ((symbol-function 'message-send-and-exit)
+          (lambda ()
+            (push '(send) events)
+            (run-hooks 'message-sent-hook))))
       (unwind-protect
           (let ((ambient-buffer nil))
             (with-temp-buffer
               (setq ambient-buffer (current-buffer))
-              (mu4e-autotask-send-email tmpl '("/tmp/file.pdf") success)
+              (mu4e-autotask-send-email
+               tmpl '("/tmp/file.pdf") success)
               (should (buffer-live-p draft-buffer))
               (with-current-buffer draft-buffer
                 (should (string-match-p "Body text" (buffer-string))))
               (with-current-buffer ambient-buffer
-                (should-not (string-match-p "Body text" (buffer-string))))))
+                (should-not
+                 (string-match-p "Body text" (buffer-string))))))
         (when (buffer-live-p draft-buffer)
           (kill-buffer draft-buffer))))
     (should
@@ -1818,10 +2099,13 @@ filename for them; FN must not be called for those."
   "Declining the send discards the modified draft without a second prompt.
 The compose buffer has been modified by the inserted body, so the real
 `message-kill-buffer' would normally ask \"kill anyway?\"; declining the send
-must suppress that and kill the buffer unconditionally, then signal `user-error'."
+must suppress that and kill the buffer outright, then signal `user-error'."
   (let ((tmpl
          (make-mu4e-autotask-email-template
-          :context "ctx" :to "to@x" :subject "Subj" :body "Body text"))
+          :context "ctx"
+          :to "to@x"
+          :subject "Subj"
+          :body "Body text"))
         (buf nil))
     (cl-letf (((symbol-function 'mu4e-context-switch) #'ignore)
               ((symbol-function 'mu4e-compose-new) #'ignore)
@@ -1835,7 +2119,8 @@ must suppress that and kill the buffer unconditionally, then signal `user-error'
       (with-temp-buffer
         (setq buf (current-buffer))
         (should-error
-         (mu4e-autotask-send-email tmpl nil #'ignore) :type 'user-error)))
+         (mu4e-autotask-send-email tmpl nil #'ignore)
+         :type 'user-error)))
     (should-not (buffer-live-p buf))))
 
 (ert-deftest mu4e-autotask-test-do-send-email-confirm ()
@@ -1869,11 +2154,14 @@ and then want the same confirm-and-send behavior."
       (with-temp-buffer
         (setq buf (current-buffer))
         (should-error
-         (mu4e-autotask-do-send-email "to@x" #'ignore) :type 'user-error)))
+         (mu4e-autotask-do-send-email "to@x" #'ignore)
+         :type 'user-error)))
     (should-not sent)
     (should-not (buffer-live-p buf))))
 
-(ert-deftest mu4e-autotask-test-do-send-email-success-fn-error-contained ()
+(ert-deftest
+    mu4e-autotask-test-do-send-email-success-fn-error-contained
+    ()
   "An error in SUCCESS-FN becomes a warning, not a failed send.
 The message is already sent when SUCCESS-FN runs from `message-sent-hook',
 but the send machinery's cleanup is not; an escaping error would leave the
@@ -1893,12 +2181,15 @@ sent message in a re-sendable compose buffer."
          "to@x" #'mu4e-autotask-test--failing-success-fn)))
     (should (equal (length warnings) 1))
     (should (eq (nth 0 (car warnings)) 'mu4e-autotask))
-    (should (string-match-p "Recording failed" (nth 1 (car warnings))))
+    (should
+     (string-match-p "Recording failed" (nth 1 (car warnings))))
     (should (eq (nth 2 (car warnings)) :error))))
 
-(ert-deftest mu4e-autotask-test-do-send-email-success-fn-quit-contained ()
+(ert-deftest
+    mu4e-autotask-test-do-send-email-success-fn-quit-contained
+    ()
   "A quit in SUCCESS-FN becomes a warning, not an aborted cleanup.
-`quit' is not an `error' subtype, so without an explicit handler a C-g
+`quit' is not an `error' subtype, so without an explicit handler an interrupt
 during the follow-up action would escape `message-sent-hook' and leave the
 sent message in a re-sendable compose buffer."
   (let ((warnings nil))
@@ -1920,4 +2211,9 @@ sent message in a re-sendable compose buffer."
     (should (eq (nth 2 (car warnings)) :error))))
 
 (provide 'mu4e-autotask-test)
+
+;; Local Variables:
+;; package-lint-main-file: "mu4e-autotask.el"
+;; End:
+
 ;;; mu4e-autotask-test.el ends here

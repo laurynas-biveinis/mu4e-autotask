@@ -12,6 +12,9 @@
 #   - elisp-lint (skipped if anything failed so far)
 #   - eask lint keywords / regexps
 #   - ERT tests (skipped on syntax errors)
+#   The default eask format/lint runs cover the package files (Eask `files').
+#   mu4e-autotask-test.el is not a package file, so it is formatted and linted
+#   explicitly too.
 # - Org: org-lint on README.org
 # - Shell: bash -n, shellcheck, shfmt
 # - Markdown: mdl, prettier, textlint terminology
@@ -38,7 +41,8 @@ fi
 
 if [ $ELISP_SYNTAX_FAILED -eq 0 ]; then
 	echo -n "Running elisp-autofmt... "
-	if eask format elisp-autofmt; then
+	if eask format elisp-autofmt &&
+		eask format elisp-autofmt mu4e-autotask-test.el; then
 		echo "OK!"
 	else
 		echo "elisp-autofmt failed!"
@@ -52,7 +56,8 @@ eask clean elc >/dev/null 2>&1 || true
 
 if [ $ERRORS -eq 0 ]; then
 	echo -n "Running elisp-lint... "
-	if eask lint elisp-lint; then
+	if eask lint elisp-lint &&
+		eask lint elisp-lint mu4e-autotask-test.el; then
 		echo "OK!"
 	else
 		echo "elisp-lint failed"

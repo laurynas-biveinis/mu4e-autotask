@@ -83,6 +83,7 @@ jobs:
           eask install
           eask compile
           eask lint elisp-lint
+          eask lint elisp-lint mu4e-autotask-test.el
           eask lint keywords
           eask lint regexps
           eask run script test
