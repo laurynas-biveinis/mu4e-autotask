@@ -1,4 +1,5 @@
 ;;; mu4e-autotask.el --- Email automation for mu4e -*- lexical-binding: t -*-
+;; jscpd:ignore-start
 
 ;; Copyright (C) 2026 Laurynas Biveinis
 
@@ -44,6 +45,7 @@
 ;; mu4e itself is a runtime requirement; it ships with mu and is not an ELPA
 ;; package, so it is not listed in Package-Requires.
 
+;; jscpd:ignore-end
 ;;; Code:
 
 (require 'cl-lib)
