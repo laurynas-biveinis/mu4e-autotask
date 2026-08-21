@@ -1,7 +1,7 @@
 ;; -*- mode: eask; lexical-binding: t -*-
 
 (package "mu4e-autotask"
-         "0.1"
+         "1.0.0"
          "Email automation for mu4e")
 
 (author "Laurynas Biveinis" "laurynas.biveinis@gmail.com")

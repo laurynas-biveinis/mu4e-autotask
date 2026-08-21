@@ -2100,6 +2100,52 @@ sent message in a re-sendable compose buffer."
     (should (string-match-p "Quit" (nth 1 warning)))
     (should (eq (nth 2 warning) :error))))
 
+;;; Meta tests
+
+(defconst mu4e-autotask-test--repo-root
+  (file-name-directory
+   (or load-file-name buffer-file-name (expand-file-name "./")))
+  "Repository root directory, captured at test-file load time.
+Used by repo-level meta tests that read project files (Eask,
+`mu4e-autotask.el', NEWS) by name.")
+
+(defun mu4e-autotask-test--read-repo-file (relative-name)
+  "Return the contents of RELATIVE-NAME under the repository root."
+  (with-temp-buffer
+    (insert-file-contents
+     (expand-file-name relative-name mu4e-autotask-test--repo-root))
+    (buffer-string)))
+
+(ert-deftest mu4e-autotask-test-meta-version-strings-agree ()
+  "Test that the package version is consistent across all sites.
+The `Eask' file's `(package ...)' form, `mu4e-autotask.el's `;; Version:'
+header, and the `NEWS' top-section heading must all report the same
+version; drift between them leads to MELPA/Eask metadata inconsistencies
+at release time and to changelog/release-state confusion."
+  (let* ((eask-content (mu4e-autotask-test--read-repo-file "Eask"))
+         (el-content
+          (mu4e-autotask-test--read-repo-file "mu4e-autotask.el"))
+         (news-content (mu4e-autotask-test--read-repo-file "NEWS"))
+         (eask-version
+          (and (string-match
+                "(package[ \t\n]+\"[^\"]+\"[ \t\n]+\"\\([^\"]+\\)\""
+                eask-content)
+               (match-string 1 eask-content)))
+         (el-version
+          (and (string-match
+                "^;;[ \t]+Version:[ \t]+\\(\\S-+\\)" el-content)
+               (match-string 1 el-content)))
+         (news-version
+          (and
+           (string-match
+            "^\\* Changes in mu4e-autotask \\(\\S-+\\)" news-content)
+           (match-string 1 news-content))))
+    (should (stringp eask-version))
+    (should (stringp el-version))
+    (should (stringp news-version))
+    (should (equal eask-version el-version))
+    (should (equal eask-version news-version))))
+
 (provide 'mu4e-autotask-test)
 
 ;; Local Variables:

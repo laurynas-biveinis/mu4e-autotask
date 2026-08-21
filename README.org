@@ -45,6 +45,8 @@ mu).  Then enable the package:
 =mu4e-autotask-initialize= adds an "Execute automation" entry to
 =mu4e-view-actions=; run it from a message view to dispatch that message.
 
+See [[file:NEWS][NEWS]] for the changelog.
+
 * Configuring rules
 
 Set =mu4e-autotask-rules= to a list of rules.  Each rule is a property list:
