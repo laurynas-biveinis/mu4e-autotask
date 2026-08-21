@@ -4,6 +4,8 @@
 ;; Copyright (C) 2026 Laurynas Biveinis
 
 ;; Author: Laurynas Biveinis <laurynas.biveinis@gmail.com>
+;; Assisted-by: Claude Code:claude-opus-4-8
+;; Assisted-by: Claude Code:claude-fable-5
 ;; URL: https://github.com/laurynas-biveinis/mu4e-autotask
 
 ;; This file is NOT part of GNU Emacs.
