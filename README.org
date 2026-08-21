@@ -16,8 +16,7 @@ attachments, plus a small templated outgoing-mail engine.
 
 * Installation
 
-mu4e-autotask is not on MELPA because it depends on mu4e, which is not an ELPA
-package.  Install it directly from this repository.
+mu4e-autotask is not yet on MELPA.  Install it directly from this repository.
 
 On Emacs 29.1 or newer, use =package-vc-install=:
 
