@@ -43,8 +43,8 @@
 ;; to the organizer, and optionally record the event in a Google Calendar via
 ;; org-gcal (see `mu4e-autotask-icalendar-event-target-function').
 ;;
-;; mu4e itself is a runtime requirement; it ships with mu and is not an ELPA
-;; package, so it is not listed in Package-Requires.
+;; mu4e 1.12 or later is a runtime requirement; it ships with mu and is not an
+;; ELPA package, so it is not listed in Package-Requires.
 
 ;;; Code:
 

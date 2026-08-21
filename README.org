@@ -11,7 +11,7 @@ attachments, plus a small templated outgoing-mail engine.
 * Requirements
 
 - Emacs 29.1 or newer.
-- mu4e.  It ships with [[https://www.djcbsoftware.nl/code/mu/][mu]] and is not an ELPA package, so it is not a
+- mu4e 1.12 or newer.  It ships with [[https://www.djcbsoftware.nl/code/mu/][mu]] and is not an ELPA package, so it is not a
   declared package dependency; install mu separately.
 
 * Installation
