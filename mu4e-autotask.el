@@ -23,6 +23,7 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+;; jscpd:ignore-end
 
 ;;; Commentary:
 
@@ -45,7 +46,6 @@
 ;; mu4e itself is a runtime requirement; it ships with mu and is not an ELPA
 ;; package, so it is not listed in Package-Requires.
 
-;; jscpd:ignore-end
 ;;; Code:
 
 (require 'cl-lib)

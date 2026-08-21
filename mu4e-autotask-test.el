@@ -20,12 +20,12 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+;; jscpd:ignore-end
 
 ;;; Commentary:
 
 ;; ERT test suite for mu4e-autotask.
 
-;; jscpd:ignore-end
 ;;; Code:
 
 (require 'ert)
