@@ -51,6 +51,6 @@ jobs:
             (mu4e-autotask :fetcher github :repo "laurynas-biveinis/mu4e-autotask")
           # false: melpazoid warnings do not fail the build.
           WARN_IS_ERROR: false
-          # false: package is not (yet) on MELPA.
-          EXIST_OK: false
+          # true: package is on MELPA, so melpazoid checks it is still there.
+          EXIST_OK: true
         run: echo "$GITHUB_REF" && make -C ~/melpazoid
