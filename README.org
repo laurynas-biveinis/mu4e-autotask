@@ -1,6 +1,9 @@
 #+title: mu4e-autotask
 #+options: toc:nil
 
+[[https://melpa.org/#/mu4e-autotask][file:https://melpa.org/packages/mu4e-autotask-badge.svg]]
+[[https://stable.melpa.org/#/mu4e-autotask][file:https://stable.melpa.org/packages/mu4e-autotask-badge.svg]]
+
 Rule-based email automation for [[https://www.djcbsoftware.nl/code/mu/mu4e.html][mu4e]].
 
 =mu4e-autotask= dispatches incoming messages to action functions based on
