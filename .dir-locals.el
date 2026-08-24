@@ -2,7 +2,6 @@
                      (indent-tabs-mode . nil)
                      (sentence-end-double-space . t)
                      (elisp-lint-indent-specs . ((mu4e-autotask-test--with-cleanup . 0)
-                                                 (mu4e-autotask-test--with-org-gcal-require . 1)
                                                  (mu4e-autotask-test--with-rsvp . 0)
                                                  (mu4e-autotask-test--with-browse-report . 0)
                                                  (mu4e-autotask-test--without-org-gcal . 0)
