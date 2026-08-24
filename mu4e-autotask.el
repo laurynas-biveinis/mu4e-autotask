@@ -711,16 +711,17 @@ star with org-gcal's ✱ convention, which its drawer reader converts back to
 
 (defun mu4e-autotask--icalendar-org-gcal-available-p ()
   "Return non-nil when org-gcal can be used to record an event.
-Load it on demand; `ignore-errors' because NOERROR only covers a missing
-file, not a load failure inside org-gcal's dependencies.  The `fboundp'
-fallback covers environments where the function exists without the package
-\(e.g. a test stub)."
-  (or (ignore-errors
-        (require 'org-gcal nil t))
-      (fboundp 'org-gcal-post-at-point)))
+Load it on demand, letting a load failure propagate: NOERROR covers org-gcal
+being absent, but once it is findable a broken install signals from inside
+the load, and that error names the missing dependency, which the caller\='s
+generic message cannot.  The `fboundp' fallback covers environments where the
+function exists without the package \(e.g. a test stub)."
+  (or (require 'org-gcal nil t) (fboundp 'org-gcal-post-at-point)))
 
 (defun mu4e-autotask--icalendar-require-org-gcal ()
-  "Load org-gcal, signaling a `user-error' when it is unavailable."
+  "Load org-gcal, signaling a `user-error' when it is absent.
+A broken org-gcal install signals its own load error instead, naming the
+dependency at fault."
   (unless (mu4e-autotask--icalendar-org-gcal-available-p)
     (user-error "Recording the event requires org-gcal")))
 

@@ -527,18 +527,19 @@ Bind `mu4e-autotask-test--browsed' to `unset' and the lexical variable
                   (setq reported (apply #'format fmt args)))))
        ,@body)))
 
-(defmacro mu4e-autotask-test--without-org-gcal (&rest body)
-  "Run BODY with org-gcal absent and the accept/confirm/send stand-ins installed.
-`org-gcal-post-at-point' is undefined and `require' fails for org-gcal, while
-the RSVP prompt accepts, the send confirmation is accepted, and the send runs
-the sent hooks."
-  (declare (indent 0) (debug t))
+(defmacro mu4e-autotask-test--with-org-gcal-require
+    (result &rest body)
+  "Run BODY with the org-gcal `require' evaluating RESULT.
+`org-gcal-post-at-point' is undefined and `require' of any other feature is
+left alone, while the RSVP prompt accepts, the send confirmation is accepted,
+and the send runs the sent hooks."
+  (declare (indent 1) (debug t))
   `(let ((real-require (symbol-function 'require)))
      (cl-letf (((symbol-function 'org-gcal-post-at-point) nil)
                ((symbol-function 'require)
                 (lambda (feature &optional filename noerror)
                   (if (eq feature 'org-gcal)
-                      nil
+                      ,result
                     (funcall real-require feature filename noerror))))
                ((symbol-function 'read-multiple-choice)
                 #'mu4e-autotask-test--choose-accept)
@@ -547,6 +548,26 @@ the sent hooks."
                ((symbol-function 'message-send-and-exit)
                 #'mu4e-autotask-test--send-running-hooks))
        ,@body)))
+
+(defmacro mu4e-autotask-test--without-org-gcal (&rest body)
+  "Run BODY with org-gcal absent, its `require' giving nil as NOERROR does."
+  (declare (indent 0) (debug t))
+  `(mu4e-autotask-test--with-org-gcal-require nil
+     ,@body))
+
+(defmacro mu4e-autotask-test--should-error-before-sending
+    (require-result type)
+  "Dispatch a recording RSVP, with REQUIRE-RESULT for the org-gcal `require'.
+Assert the dispatch signals an error of TYPE and that no RSVP was sent: an
+org-gcal problem is knowable up front, so it must surface before the send."
+  (declare (debug t))
+  `(mu4e-autotask-test--with-rsvp
+     (let ((msg (mu4e-autotask-test--request-msg))
+           (mu4e-autotask-icalendar-event-target-function
+            #'mu4e-autotask-test--nonexistent-target))
+       (mu4e-autotask-test--with-org-gcal-require ,require-result
+         (should-error (mu4e-autotask-dispatch msg) :type ,type))
+       (should-not mu4e-autotask-test--sent))))
 
 ;;; Dispatch
 
@@ -951,13 +972,21 @@ invalid, so the flow must error rather than compose a broken reply."
   "Recording an event without org-gcal signals a `user-error' before sending.
 The missing package is fully predictable, so the RSVP must not go out only for
 the recording to fail afterwards."
-  (mu4e-autotask-test--with-rsvp
-    (let ((msg (mu4e-autotask-test--request-msg))
-          (mu4e-autotask-icalendar-event-target-function
-           #'mu4e-autotask-test--nonexistent-target))
-      (mu4e-autotask-test--without-org-gcal
-        (should-error (mu4e-autotask-dispatch msg) :type 'user-error))
-      (should-not mu4e-autotask-test--sent))))
+  (mu4e-autotask-test--should-error-before-sending nil 'user-error))
+
+(ert-deftest
+    mu4e-autotask-test-icalendar-org-gcal-load-failure-propagates
+    ()
+  "A failure loading org-gcal reaches the user, not a missing-package error.
+NOERROR only covers org-gcal being absent.  Once it is findable, a missing
+dependency of its own signals from inside the load, and that error names the
+culprit, so it must not be reduced to \"requires org-gcal\" -- which is false
+when org-gcal is installed."
+  (mu4e-autotask-test--should-error-before-sending
+   (signal
+    'file-missing
+    '("Cannot open load file" "No such file or directory" "request"))
+   'file-missing))
 
 (ert-deftest
     mu4e-autotask-test-icalendar-org-gcal-missing-target-nil-sends-once
