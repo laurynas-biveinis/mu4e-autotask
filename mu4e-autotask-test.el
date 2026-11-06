@@ -91,9 +91,17 @@ Store it in `mu4e-autotask-test--browsed'."
 
 (defun mu4e-autotask-test--mime-parts ()
   "Return `mu4e-autotask-test--parts'.
-Stand-in for `mu4e-view-mime-parts', installed with `cl-letf' so a test can
-supply the message's parts through `mu4e-autotask-test--parts'."
+Stand-in for `mu4e-view-mime-parts' that `mu4e-autotask-test--with-mime-parts'
+installs."
   mu4e-autotask-test--parts)
+
+(defmacro mu4e-autotask-test--with-mime-parts (parts &rest body)
+  "Run BODY with `mu4e-view-mime-parts' stubbed to return PARTS."
+  (declare (indent 1) (debug t))
+  `(let ((mu4e-autotask-test--parts ,parts))
+     (cl-letf (((symbol-function 'mu4e-view-mime-parts)
+                #'mu4e-autotask-test--mime-parts))
+       ,@body)))
 
 (defvar mu4e-autotask-test--saved nil
   "Reversed list of (HANDLE . PATH) conses recorded while saving attachments.")
@@ -485,10 +493,8 @@ removed."
 (defun mu4e-autotask-test--saved-attachments (parts)
   "Run `mu4e-autotask-for-each-attachment' over PARTS, recording saves.
 Return the (HANDLE . PATH) conses in the order the attachments were visited."
-  (let ((mu4e-autotask-test--parts parts)
-        (mu4e-autotask-test--saved nil))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts))
+  (let ((mu4e-autotask-test--saved nil))
+    (mu4e-autotask-test--with-mime-parts parts
       (mu4e-autotask-for-each-attachment
        #'mu4e-autotask-test--record-save))
     (nreverse mu4e-autotask-test--saved)))
@@ -1477,37 +1483,30 @@ would strip CR and reinterpret high bytes."
 (ert-deftest mu4e-autotask-test-msg-content ()
   "Content accessors return the decoded body of the matching MIME part."
   (mu4e-autotask-test--with-cleanup
-    (let ((mu4e-autotask-test--parts
-           `((:mime-type
-              "text/plain"
-              :handle
-              ,(mu4e-autotask-test--handle "plain text"))
-             (:mime-type
-              "text/html"
-              :handle
-              ,(mu4e-autotask-test--handle "<p>html</p>"
-                                           "text/html")))))
-      (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-                 #'mu4e-autotask-test--mime-parts))
-        (should (equal (mu4e-autotask-text-content) "plain text"))
-        (should (equal (mu4e-autotask-html-content) "<p>html</p>"))
-        (should
-         (equal
-          (mu4e-autotask-msg-content "text/plain") "plain text"))))))
+    (mu4e-autotask-test--with-mime-parts
+        `((:mime-type
+           "text/plain"
+           :handle
+           ,(mu4e-autotask-test--handle "plain text"))
+          (:mime-type
+           "text/html"
+           :handle
+           ,(mu4e-autotask-test--handle "<p>html</p>" "text/html")))
+      (should (equal (mu4e-autotask-text-content) "plain text"))
+      (should (equal (mu4e-autotask-html-content) "<p>html</p>"))
+      (should
+       (equal
+        (mu4e-autotask-msg-content "text/plain") "plain text")))))
 
 (ert-deftest mu4e-autotask-test-msg-content-missing-errors ()
   "Content accessors signal a `user-error' when the MIME type is absent."
   (mu4e-autotask-test--with-cleanup
-    (let ((mu4e-autotask-test--parts
-           `((:mime-type
-              "text/plain"
-              :handle
-              ,(mu4e-autotask-test--handle "plain text")))))
-      (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-                 #'mu4e-autotask-test--mime-parts))
-        (should-error
-         (mu4e-autotask-html-content)
-         :type 'user-error)))))
+    (mu4e-autotask-test--with-mime-parts
+        `((:mime-type
+           "text/plain"
+           :handle
+           ,(mu4e-autotask-test--handle "plain text")))
+      (should-error (mu4e-autotask-html-content) :type 'user-error))))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-group-1 ()
   "`mu4e-autotask-browse-url-matching' visits capture group 1 and returns it.
@@ -1771,40 +1770,40 @@ A case-mismatched marker does not fire ACTION under `case-fold-search'."
 
 (ert-deftest mu4e-autotask-test-csv-part-found ()
   "`mu4e-autotask-csv-part' returns the first .csv part."
-  (let ((mu4e-autotask-test--parts
-         '((:filename "notes.txt" :attachment-like t)
-           (:filename "data.csv" :attachment-like t))))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts))
-      (should
-       (equal
-        (mu4e-autotask-csv-part)
-        '(:filename "data.csv" :attachment-like t))))))
+  (mu4e-autotask-test--with-mime-parts '((:filename
+                                          "notes.txt"
+                                          :attachment-like t)
+                                         (:filename
+                                          "data.csv"
+                                          :attachment-like t))
+    (should
+     (equal
+      (mu4e-autotask-csv-part)
+      '(:filename "data.csv" :attachment-like t)))))
 
 (ert-deftest mu4e-autotask-test-csv-part-missing-errors ()
   "`mu4e-autotask-csv-part' signals a `user-error' when none is present."
-  (let ((mu4e-autotask-test--parts
-         '((:filename "a.txt" :attachment-like t))))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts))
-      (should-error (mu4e-autotask-csv-part) :type 'user-error))))
+  (mu4e-autotask-test--with-mime-parts '((:filename
+                                          "a.txt"
+                                          :attachment-like t))
+    (should-error (mu4e-autotask-csv-part) :type 'user-error)))
 
 (ert-deftest mu4e-autotask-test-pdf-part ()
   "`mu4e-autotask-pdf-part' returns the first .pdf part or nil."
-  (let ((mu4e-autotask-test--parts
-         '((:filename "a.txt" :attachment-like t)
-           (:filename "b.pdf" :attachment-like t))))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts))
-      (should
-       (equal
-        (mu4e-autotask-pdf-part)
-        '(:filename "b.pdf" :attachment-like t)))))
-  (let ((mu4e-autotask-test--parts
-         '((:filename "a.txt" :attachment-like t))))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts))
-      (should-not (mu4e-autotask-pdf-part)))))
+  (mu4e-autotask-test--with-mime-parts '((:filename
+                                          "a.txt"
+                                          :attachment-like t)
+                                         (:filename
+                                          "b.pdf"
+                                          :attachment-like t))
+    (should
+     (equal
+      (mu4e-autotask-pdf-part)
+      '(:filename "b.pdf" :attachment-like t))))
+  (mu4e-autotask-test--with-mime-parts '((:filename
+                                          "a.txt"
+                                          :attachment-like t))
+    (should-not (mu4e-autotask-pdf-part))))
 
 (ert-deftest mu4e-autotask-test-save-part-file ()
   "`mu4e-autotask-save-part-file' writes the part and returns its path."
@@ -1832,24 +1831,22 @@ A case-mismatched marker does not fire ACTION under `case-fold-search'."
   (mu4e-autotask-test--with-cleanup
     (let ((dir (make-temp-file "mu4e-autotask-test" t)))
       (unwind-protect
-          (let ((mu4e-autotask-test--parts
-                 `((:filename "notes.txt" :attachment-like t)
-                   (:target-dir
-                    ,dir
-                    :filename "data.csv"
-                    :attachment-like t
-                    :handle
-                    ,(mu4e-autotask-test--handle "a,b,c")))))
-            (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-                       #'mu4e-autotask-test--mime-parts))
-              (let ((path (mu4e-autotask-save-csv-part)))
-                (should (equal path (mu4e-join-paths dir "data.csv")))
-                (should
-                 (equal
-                  (with-temp-buffer
-                    (insert-file-contents path)
-                    (buffer-string))
-                  "a,b,c")))))
+          (mu4e-autotask-test--with-mime-parts
+              `((:filename "notes.txt" :attachment-like t)
+                (:target-dir
+                 ,dir
+                 :filename "data.csv"
+                 :attachment-like t
+                 :handle
+                 ,(mu4e-autotask-test--handle "a,b,c")))
+            (let ((path (mu4e-autotask-save-csv-part)))
+              (should (equal path (mu4e-join-paths dir "data.csv")))
+              (should
+               (equal
+                (with-temp-buffer
+                  (insert-file-contents path)
+                  (buffer-string))
+                "a,b,c"))))
         (delete-directory dir t)))))
 
 (ert-deftest mu4e-autotask-test-for-each-attachment ()
@@ -1892,30 +1889,27 @@ filename for them; FN must not be called for those."
 
 (ert-deftest mu4e-autotask-test-open-all-attachments ()
   "`mu4e-autotask-open-all-attachments' saves, opens, deletes matching parts."
-  (let ((mu4e-autotask-test--parts
-         '((:target-dir
-            "/tmp"
-            :filename "a.pdf"
-            :handle hp
-            :attachment-like t)
-           (:target-dir
-            "/tmp"
-            :filename "b.txt"
-            :handle ht
-            :attachment-like t)))
-        (mu4e-autotask-test--saved nil)
+  (let ((mu4e-autotask-test--saved nil)
         (opened nil)
         (deleted nil))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts)
-              ((symbol-function 'mm-save-part-to-file)
-               #'mu4e-autotask-test--record-save)
-              ((symbol-function 'mu4e-autotask--open-file)
-               (lambda (path) (push path opened)))
-              ((symbol-function
-                'mu4e-autotask--delete-file-after-delay)
-               (lambda (path _delay) (push path deleted))))
-      (mu4e-autotask-open-all-attachments ".pdf"))
+    (mu4e-autotask-test--with-mime-parts '((:target-dir
+                                            "/tmp"
+                                            :filename "a.pdf"
+                                            :handle hp
+                                            :attachment-like t)
+                                           (:target-dir
+                                            "/tmp"
+                                            :filename "b.txt"
+                                            :handle ht
+                                            :attachment-like t))
+      (cl-letf (((symbol-function 'mm-save-part-to-file)
+                 #'mu4e-autotask-test--record-save)
+                ((symbol-function 'mu4e-autotask--open-file)
+                 (lambda (path) (push path opened)))
+                ((symbol-function
+                  'mu4e-autotask--delete-file-after-delay)
+                 (lambda (path _delay) (push path deleted))))
+        (mu4e-autotask-open-all-attachments ".pdf")))
     (should
      (equal
       mu4e-autotask-test--saved
@@ -1925,23 +1919,20 @@ filename for them; FN must not be called for those."
 
 (ert-deftest mu4e-autotask-test-download-all-jpgs ()
   "`mu4e-autotask-download-all-jpgs' saves only the .jpg attachments."
-  (let ((mu4e-autotask-test--parts
-         '((:target-dir
-            "/tmp"
-            :filename "a.jpg"
-            :handle hj
-            :attachment-like t)
-           (:target-dir
-            "/tmp"
-            :filename "b.pdf"
-            :handle hp
-            :attachment-like t)))
-        (mu4e-autotask-test--saved nil))
-    (cl-letf (((symbol-function 'mu4e-view-mime-parts)
-               #'mu4e-autotask-test--mime-parts)
-              ((symbol-function 'mm-save-part-to-file)
-               #'mu4e-autotask-test--record-save))
-      (mu4e-autotask-download-all-jpgs))
+  (let ((mu4e-autotask-test--saved nil))
+    (mu4e-autotask-test--with-mime-parts '((:target-dir
+                                            "/tmp"
+                                            :filename "a.jpg"
+                                            :handle hj
+                                            :attachment-like t)
+                                           (:target-dir
+                                            "/tmp"
+                                            :filename "b.pdf"
+                                            :handle hp
+                                            :attachment-like t))
+      (cl-letf (((symbol-function 'mm-save-part-to-file)
+                 #'mu4e-autotask-test--record-save))
+        (mu4e-autotask-download-all-jpgs)))
     (should
      (equal
       mu4e-autotask-test--saved
