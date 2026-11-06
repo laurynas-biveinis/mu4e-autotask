@@ -559,6 +559,44 @@ Bind `mu4e-autotask-test--browsed' to `unset' and the lexical variable
     (should (equal mu4e-autotask-test--browsed expected))
     (should (equal reported (concat "Opening " expected)))))
 
+(defun mu4e-autotask-test--part
+    (content &optional mime-type encoding charset)
+  "Return a MIME part whose body, as transferred, is CONTENT.
+The part carries the handle `mu4e-autotask-test--handle' returns for CONTENT,
+MIME-TYPE, ENCODING and CHARSET, and the same MIME type."
+  (let ((type (or mime-type "text/plain")))
+    (list
+     :mime-type type
+     :handle
+     (mu4e-autotask-test--handle content type encoding charset))))
+
+(defun mu4e-autotask-test--browse-html (parts &rest args)
+  "Call `mu4e-autotask-browse-html-url-matching' with ARGS over message PARTS.
+Return a list of its value, the URL passed to `browse-url' (or `unset') and the
+reported message."
+  (mu4e-autotask-test--with-mime-parts parts
+    (mu4e-autotask-test--with-browse-report
+      (list
+       (apply #'mu4e-autotask-browse-html-url-matching args)
+       mu4e-autotask-test--browsed
+       reported))))
+
+(defun mu4e-autotask-test--browse-pay-link (content &optional charset)
+  "Browse the link labelled \"Apmokėti\" in quoted-printable HTML CONTENT.
+CHARSET is the part's declared charset, or nil for none.  Return what
+`mu4e-autotask-test--browse-html' returns."
+  (mu4e-autotask-test--browse-html (list
+                                    (mu4e-autotask-test--part
+                                     content
+                                     "text/html"
+                                     'quoted-printable
+                                     charset))
+                                   "href=\"\\([^\"]+\\)\">Apmokėti<"))
+
+(defun mu4e-autotask-test--opened (url)
+  "Return what `mu4e-autotask-test--browse-html' returns after opening URL."
+  (list url url (concat "Opening " url)))
+
 (defmacro mu4e-autotask-test--without-org-gcal (&rest body)
   "Run BODY with org-gcal absent and the accept/confirm/send stand-ins installed.
 `org-gcal-post-at-point' is undefined and `require' fails for org-gcal, while
@@ -1509,15 +1547,12 @@ would strip CR and reinterpret high bytes."
 (ert-deftest mu4e-autotask-test-msg-content ()
   "Content accessors return the body of the matching MIME part."
   (mu4e-autotask-test--with-cleanup
-    (mu4e-autotask-test--with-mime-parts
-        `((:mime-type
-           "text/plain"
-           :handle
-           ,(mu4e-autotask-test--handle "plain text"))
-          (:mime-type
-           "text/html"
-           :handle
-           ,(mu4e-autotask-test--handle "<p>html</p>" "text/html")))
+    (mu4e-autotask-test--with-mime-parts (list
+                                          (mu4e-autotask-test--part
+                                           "plain text")
+                                          (mu4e-autotask-test--part
+                                           "<p>html</p>"
+                                           "text/html"))
       (should (equal (mu4e-autotask-text-content) "plain text"))
       (should (equal (mu4e-autotask-html-content) "<p>html</p>"))
       (should
@@ -1527,13 +1562,12 @@ would strip CR and reinterpret high bytes."
 (ert-deftest mu4e-autotask-test-msg-content-returns-bytes ()
   "Content accessors undo the transfer encoding but not the declared charset."
   (mu4e-autotask-test--with-cleanup
-    (mu4e-autotask-test--with-mime-parts
-        `((:mime-type
-           "text/plain"
-           :handle
-           ,(mu4e-autotask-test--handle
-             "Apmok=C4=97ti"
-             nil 'quoted-printable "utf-8")))
+    (mu4e-autotask-test--with-mime-parts (list
+                                          (mu4e-autotask-test--part
+                                           "Apmok=C4=97ti"
+                                           nil
+                                           'quoted-printable
+                                           "utf-8"))
       (let ((body (mu4e-autotask-text-content)))
         (should (equal body (encode-coding-string "Apmokėti" 'utf-8)))
         (should-not (multibyte-string-p body))))))
@@ -1541,12 +1575,199 @@ would strip CR and reinterpret high bytes."
 (ert-deftest mu4e-autotask-test-msg-content-missing-errors ()
   "Content accessors signal a `user-error' when the MIME type is absent."
   (mu4e-autotask-test--with-cleanup
-    (mu4e-autotask-test--with-mime-parts
-        `((:mime-type
-           "text/plain"
-           :handle
-           ,(mu4e-autotask-test--handle "plain text")))
+    (mu4e-autotask-test--with-mime-parts (list
+                                          (mu4e-autotask-test--part
+                                           "plain text"))
       (should-error (mu4e-autotask-html-content) :type 'user-error))))
+
+(ert-deftest mu4e-autotask-test-browse-html-url-matching ()
+  "Open the link in the HTML part rather than one in the plain-text part."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list
+        (mu4e-autotask-test--part
+         "href=\"https://billing.example/plain\"")
+        (mu4e-autotask-test--part
+         "<a href=\"https://billing.example/html\">Pay</a>"
+         "text/html"))
+       "href=\"\\([^\"]+\\)\"")
+      (mu4e-autotask-test--opened "https://billing.example/html")))))
+
+(ert-deftest mu4e-autotask-test-browse-html-url-matching-group ()
+  "Browse the capture GROUP that is given."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list
+        (mu4e-autotask-test--part
+         "<a href=\"https://billing.example/pay\">Pay</a>"
+         "text/html"))
+       "\\(href\\)=\"\\([^\"]+\\)\"" nil 2)
+      (mu4e-autotask-test--opened "https://billing.example/pay")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-undoes-soft-breaks
+    ()
+  "Undo the quoted-printable soft line breaks of the HTML part."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list
+        (mu4e-autotask-test--part
+         "<a href=3D\"https://billing.example/in=\nvoice?id=3D7\">Pay</a>"
+         "text/html" 'quoted-printable))
+       "href=\"\\([^\"]+\\)\"")
+      (mu4e-autotask-test--opened
+       "https://billing.example/invoice?id=7")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-keeps-literal-equals
+    ()
+  "Keep a decoded `=' that precedes a hard line break in the captured URL.
+The HTML body is already transfer-decoded, so it has no quoted-printable soft
+line breaks left to undo."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list
+        (mu4e-autotask-test--part
+         "<a href=3D\"https://billing.example/pay?a=3D\nb\">Pay</a>"
+         "text/html" 'quoted-printable))
+       "href=\"\\([^\"]+\\)\"")
+      (mu4e-autotask-test--opened
+       "https://billing.example/pay?a=b")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-decodes-charset
+    ()
+  "Match a non-ASCII REGEXP against the body decoded from its declared charset."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-pay-link
+       (concat
+        "<a href=3D\"https://billing.example/help\">Pagalba</a>\n"
+        "<a href=3D\"https://billing.example/pay\">Apmok=EBti</a>")
+       "iso-8859-13")
+      (mu4e-autotask-test--opened "https://billing.example/pay")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-utf-8-fallback
+    ()
+  "Decode as UTF-8 an HTML body whose charset is absent, us-ascii or unknown.
+A conflicting charset declared inside the HTML is ignored."
+  (dolist (charset '(nil "us-ascii" "US_ASCII" "x-no-such-charset"))
+    (mu4e-autotask-test--with-cleanup
+      ;; CHARSET leads both sides so a failure shows which case it was.
+      (should
+       (equal
+        (cons
+         charset
+         (mu4e-autotask-test--browse-pay-link
+          (concat
+           "<meta http-equiv=3D\"Content-Type\" content=3D\"text/html; "
+           "charset=3Diso-8859-13\">\n"
+           "<a href=3D\"https://billing.example/pay\">Apmok=C4=97ti</a>")
+          charset))
+        (cons
+         charset
+         (mu4e-autotask-test--opened
+          "https://billing.example/pay")))))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-decodes-char-refs
+    ()
+  "Decode character references in the captured href of the HTML body."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list
+        (mu4e-autotask-test--part
+         (concat
+          "<a href=3D\"https://billing.example/pay?id&#x3D;7&amp;t&#61;"
+          "pdf\">Pay</a>")
+         "text/html" 'quoted-printable))
+       "href=\"\\([^\"]+\\)\"")
+      (mu4e-autotask-test--opened
+       "https://billing.example/pay?id=7&t=pdf")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-charset-override
+    ()
+  "Decode the HTML body's charset through `mm-charset-override-alist'."
+  (let ((mm-charset-override-alist '((iso-8859-1 . windows-1252))))
+    (mu4e-autotask-test--with-cleanup
+      (should
+       (equal
+        (mu4e-autotask-test--browse-html
+         (list
+          (mu4e-autotask-test--part
+           "<a href=3D\"https://billing.example/pay\">Pay 5=80</a>"
+           "text/html" 'quoted-printable "iso-8859-1"))
+         "href=\"\\([^\"]+\\)\">Pay 5€<")
+        (mu4e-autotask-test--opened
+         "https://billing.example/pay"))))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-regexp-sees-char-refs
+    ()
+  "REGEXP matches the HTML source, character references and all."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list
+        (mu4e-autotask-test--part
+         "<a href=3D\"https://billing.example/pay\">Apmok&#279;ti</a>"
+         "text/html" 'quoted-printable))
+       "href=\"\\([^\"]+\\)\">Apmok&#279;ti<")
+      (mu4e-autotask-test--opened "https://billing.example/pay")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-saves-match-data
+    ()
+  "Leave the caller's match data intact."
+  (mu4e-autotask-test--with-cleanup
+    (let ((subject "caller data"))
+      (string-match "caller \\(data\\)" subject)
+      (let ((before (match-data)))
+        (mu4e-autotask-test--browse-pay-link
+         "<a href=3D\"https://billing.example/pay\">Apmok=C4=97ti</a>"
+         "utf-8")
+        (should (equal (match-data) before))))))
+
+(ert-deftest mu4e-autotask-test-browse-html-url-matching-no-match ()
+  "Return nil and report DESCRIPTION when the HTML body has no match."
+  (mu4e-autotask-test--with-cleanup
+    (should
+     (equal
+      (mu4e-autotask-test--browse-html
+       (list (mu4e-autotask-test--part "<p>no link</p>" "text/html"))
+       "href=\"\\([^\"]+\\)\"" "payment link")
+      '(nil unset "Could not find the payment link")))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-html-url-matching-no-html-errors
+    ()
+  "Signal a `user-error' and browse nothing when the message lacks text/html."
+  (mu4e-autotask-test--with-cleanup
+    (mu4e-autotask-test--with-mime-parts
+        (list
+         (mu4e-autotask-test--part
+          "href=\"https://billing.example/plain\""))
+      (mu4e-autotask-test--with-browse-report
+        (should-error
+         (mu4e-autotask-browse-html-url-matching
+          "href=\"\\([^\"]+\\)\"")
+         :type 'user-error)
+        (should (eq mu4e-autotask-test--browsed 'unset))
+        (should (null reported))))))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-group-1 ()
   "`mu4e-autotask-browse-url-matching' visits capture group 1 and returns it.

@@ -149,6 +149,15 @@ Acting on the message:
   =Opening <url>= on success; on no match, or when the capture group is empty or
   becomes empty after the cleanup, it messages about the missing DESCRIPTION
   (default ="URL"=) and returns nil.
+- =(mu4e-autotask-browse-html-url-matching REGEXP &optional DESCRIPTION GROUP)= ::
+  as above, with CONTENT the current message's text/html body decoded from its
+  transfer encoding and its Content-Type charset, as remapped by
+  =mm-charset-override-alist= (UTF-8 if that charset is absent, us-ascii or
+  unknown; a charset declared only inside the HTML is not consulted).  REGEXP
+  can therefore contain non-ASCII text, but it matches the HTML source, so text
+  written there as character references must be matched as such.  No
+  quoted-printable soft line breaks are removed from the captured URL, as the
+  decoded body has none left.  Signals a =user-error= if no HTML part exists.
 - =(mu4e-autotask-when-body-matches MSG REGEXP ACTION &optional SKIP-MESSAGE)= ::
   call =ACTION= with =MSG= when =REGEXP= matches the raw message of =MSG=
   (headers and body), returning its value; otherwise message =SKIP-MESSAGE= (when
@@ -161,6 +170,16 @@ Acting on the message:
 
 An action function takes the mu4e message and runs in the message view, so the
 no-argument helpers above act on that same message.
+
+Open a link from the HTML body, stopping at the closing quote of its =href=:
+
+#+begin_src emacs-lisp
+(defun my-open-invoice (_msg)
+  "Open the payment link in the current invoice."
+  (mu4e-autotask-browse-html-url-matching
+   "href=\"\\(https://billing\\.example/pay/[^\"]+\\)\""
+   "payment link"))
+#+end_src
 
 Open a URL parsed out of the raw message — e.g. a CI "run failed" notification —
 with =mu4e-autotask-browse-url-matching=, passing =GROUP= 0 for a regexp with no

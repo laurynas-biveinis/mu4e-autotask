@@ -2,6 +2,16 @@ mu4e-autotask NEWS -- history of user-visible changes
 
 * Changes in mu4e-autotask 1.1.0 (unreleased)
 
+** New Features
+
+*** New action helper `mu4e-autotask-browse-html-url-matching'
+    Browses and returns the URL captured by REGEXP in the current
+    message's text/html body, decoded from its transfer encoding and
+    its Content-Type charset as remapped by `mm-charset-override-alist'
+    (UTF-8 if that charset is absent, us-ascii or unknown) so that
+    REGEXP can contain non-ASCII text.  Signals a `user-error' when the
+    message has no HTML part.
+
 ** Bug Fixes
 
 *** `mu4e-autotask-browse-url-matching' decodes more character references

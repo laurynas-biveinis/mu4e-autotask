@@ -268,18 +268,23 @@ conversion, so the returned bytes match the message as stored on disk."
     (insert-file-contents-literally (mu4e-message-readable-path msg))
     (buffer-string)))
 
+(defun mu4e-autotask--msg-part-handle (mime-type)
+  "Return the MIME handle of the first current message part with MIME-TYPE.
+Signal a `user-error' if the message has no part of MIME-TYPE."
+  (plist-get
+   (or (seq-find
+        (lambda (part)
+          (string= mime-type (plist-get part :mime-type)))
+        (mu4e-view-mime-parts))
+       (user-error "No %s part in this message" mime-type))
+   :handle))
+
 (defun mu4e-autotask-msg-content (mime-type)
   "Return the body of the first current message part with MIME-TYPE.
 Its transfer encoding is undone but its charset is not: the value is a unibyte
 string of the part's bytes.  Signal a `user-error' if the message has no part
 of MIME-TYPE."
-  (let ((part
-         (or (seq-find
-              (lambda (part)
-                (string= mime-type (plist-get part :mime-type)))
-              (mu4e-view-mime-parts))
-             (user-error "No %s part in this message" mime-type))))
-    (mm-get-part (plist-get part :handle))))
+  (mm-get-part (mu4e-autotask--msg-part-handle mime-type)))
 
 (defun mu4e-autotask-html-content ()
   "Return the text/html body of the current mu4e message.
@@ -330,6 +335,47 @@ Unlike HTML, a reference without `;' is never decoded."
    t
    t))
 
+(defun mu4e-autotask--browse-captured-url
+    (regexp content description group soft-breaks)
+  "Browse the URL captured by REGEXP in CONTENT, and return it.
+REGEXP, CONTENT, DESCRIPTION and GROUP are as for
+`mu4e-autotask-browse-url-matching'.  Non-nil SOFT-BREAKS also removes
+quoted-printable soft line breaks from the capture, which is correct only for
+CONTENT still in that transfer encoding."
+  (save-match-data
+    ;; Bind `case-fold-search' so URL matching does not depend on the calling
+    ;; buffer's value.
+    (let*
+        ((case-fold-search nil)
+         ;; Bind the raw capture first: a non-participating GROUP yields nil,
+         ;; which must short-circuit before `replace-regexp-in-string' (which
+         ;; rejects nil).
+         (raw
+          (and (string-match regexp content)
+               (match-string (or group 1) content)))
+         ;; Strip quoted-printable soft breaks before `url' strips bare CR/LF,
+         ;; which would otherwise orphan the soft break's `='.
+         (unfolded
+          (if (and raw soft-breaks)
+              (replace-regexp-in-string "=\r?\n" "" raw)
+            raw))
+         ;; The first CR/LF strip repairs a fold even inside a reference.  The
+         ;; last strip follows decoding, as in a browser: it also removes
+         ;; decoded tab, CR and LF, and a raw tab still splits a reference.
+         (url
+          (and unfolded
+               (replace-regexp-in-string
+                "[\t\r\n]" ""
+                (mu4e-autotask--decode-char-refs
+                 (replace-regexp-in-string "[\r\n]" "" unfolded))))))
+      (if (and url (not (string-empty-p url)))
+          (progn
+            (message "Opening %s" url)
+            (browse-url url)
+            url)
+        (message "Could not find the %s" (or description "URL"))
+        nil))))
+
 (defun mu4e-autotask-browse-url-matching
     (regexp content &optional description group)
   "Browse the URL captured by REGEXP in CONTENT, and return it.
@@ -348,39 +394,42 @@ case-sensitive regardless of the ambient `case-fold-search'.  Message
 \"Opening <url>\" on success.  When REGEXP does not match, or its capture group
 is empty or becomes empty after the cleanup, message about the missing
 DESCRIPTION (default \"URL\") and return nil."
+  (mu4e-autotask--browse-captured-url
+   regexp content description group t))
+
+(defun mu4e-autotask-browse-html-url-matching
+    (regexp &optional description group)
+  "Browse and return the URL captured by REGEXP in the current HTML body.
+The body is decoded from its transfer encoding and its Content-Type charset, as
+remapped by `mm-charset-override-alist', or as UTF-8 if that charset is absent,
+us-ascii or unknown; a charset declared only inside the HTML is not consulted.
+REGEXP can therefore contain non-ASCII text, but it matches the HTML source, so
+text written there as character references must be matched as such.
+DESCRIPTION and GROUP are as for `mu4e-autotask-browse-url-matching', which
+this otherwise follows with the body as CONTENT, except that it removes no
+quoted-printable soft line breaks, as the decoded body has none left.  Signal a
+`user-error' if the message has no text/html part."
   (save-match-data
-    ;; Bind `case-fold-search' so URL matching does not depend on the calling
-    ;; buffer's value.
     (let*
-        ((case-fold-search nil)
-         ;; Bind the raw capture first: a non-participating GROUP yields nil,
-         ;; which must short-circuit before `replace-regexp-in-string' (which
-         ;; rejects nil).  The cleanups nest inner-to-outer: strip the
-         ;; quoted-printable soft break first, then any bare CR/LF, then decode
-         ;; character references, then strip tab, CR and LF.  Order matters --
-         ;; a bare-newline strip ahead of the soft break would orphan its `='.
-         ;; The first CR/LF strip repairs a fold even inside a reference.  The
-         ;; last strip follows decoding, as in a browser: it also removes
-         ;; decoded tab, CR and LF, and a raw tab still splits a reference.
-         (raw
-          (and (string-match regexp content)
-               (match-string (or group 1) content)))
-         (url
-          (and raw
-               (replace-regexp-in-string
-                "[\t\r\n]" ""
-                (mu4e-autotask--decode-char-refs
-                 (replace-regexp-in-string
-                  "[\r\n]"
-                  ""
-                  (replace-regexp-in-string "=\r?\n" "" raw)))))))
-      (if (and url (not (string-empty-p url)))
-          (progn
-            (message "Opening %s" url)
-            (browse-url url)
-            url)
-        (message "Could not find the %s" (or description "URL"))
-        nil))))
+        ((handle (mu4e-autotask--msg-part-handle "text/html"))
+         ;; ALLOW-OVERRIDE applies `mm-charset-override-alist', as mu4e's
+         ;; default Gnus view does.
+         (coding
+          (mm-charset-to-coding-system
+           (mail-content-type-get
+            (mm-handle-type handle) 'charset)
+           nil t t)))
+      (mu4e-autotask--browse-captured-url
+       regexp
+       ;; UTF-8 is a superset of ASCII, so it also decodes a mislabelled
+       ;; us-ascii or unknown-charset body the way mu4e's HTML view shows it.
+       (decode-coding-string
+        (mm-get-part handle)
+        (if (or (null coding)
+                (eq (coding-system-base coding) 'us-ascii))
+            'utf-8
+          coding))
+       description group nil))))
 
 (defun mu4e-autotask-when-body-matches
     (msg regexp action &optional skip-message)
