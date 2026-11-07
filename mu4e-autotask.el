@@ -269,8 +269,10 @@ conversion, so the returned bytes match the message as stored on disk."
     (buffer-string)))
 
 (defun mu4e-autotask-msg-content (mime-type)
-  "Return the decoded body of the first current message part with MIME-TYPE.
-Signal a `user-error' if the message has no part of MIME-TYPE."
+  "Return the body of the first current message part with MIME-TYPE.
+Its transfer encoding is undone but its charset is not: the value is a unibyte
+string of the part's bytes.  Signal a `user-error' if the message has no part
+of MIME-TYPE."
   (let ((part
          (or (seq-find
               (lambda (part)
@@ -280,11 +282,13 @@ Signal a `user-error' if the message has no part of MIME-TYPE."
     (mm-get-part (plist-get part :handle))))
 
 (defun mu4e-autotask-html-content ()
-  "Return the text/html body of the current mu4e message."
+  "Return the text/html body of the current mu4e message.
+See `mu4e-autotask-msg-content' for its encoding."
   (mu4e-autotask-msg-content "text/html"))
 
 (defun mu4e-autotask-text-content ()
-  "Return the text/plain body of the current mu4e message."
+  "Return the text/plain body of the current mu4e message.
+See `mu4e-autotask-msg-content' for its encoding."
   (mu4e-autotask-msg-content "text/plain"))
 
 (defun mu4e-autotask-browse-url-matching

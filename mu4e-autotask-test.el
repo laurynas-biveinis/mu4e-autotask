@@ -51,15 +51,30 @@
          (when (buffer-live-p buf)
            (kill-buffer buf))))))
 
-(defun mu4e-autotask-test--handle (content &optional mime-type)
-  "Return a MIME handle whose decoded body is CONTENT.
+(defun mu4e-autotask-test--handle
+    (content &optional mime-type encoding charset)
+  "Return a MIME handle whose body, as transferred, is CONTENT.
+CONTENT must be ASCII or a unibyte string, as `mm-get-part' reads the body as
+bytes: `encode-coding-string' non-ASCII text first.
 MIME-TYPE is the handle's declared content-type, defaulting to \"text/plain\".
+ENCODING is its Content-Transfer-Encoding symbol (e.g. `quoted-printable'), or
+nil for none; `mm-get-part' decodes CONTENT through it.  CHARSET, when non-nil,
+is the content-type's charset parameter (e.g. \"utf-8\").
 The backing buffer is recorded in `mu4e-autotask-test--buffers' for cleanup."
+  (cl-assert
+   (or (not (multibyte-string-p content))
+       (string-match-p "\\`[[:ascii:]]*\\'" content))
+   nil "Non-ASCII multibyte CONTENT: %S" content)
   (let ((buf (generate-new-buffer " *mu4e-autotask-test*")))
     (push buf mu4e-autotask-test--buffers)
     (with-current-buffer buf
       (insert content))
-    (mm-make-handle buf (list (or mime-type "text/plain")))))
+    (mm-make-handle
+     buf
+     (cons
+      (or mime-type "text/plain")
+      (and charset (list (cons 'charset charset))))
+     encoding)))
 
 (defvar mu4e-autotask-test--called nil
   "Message passed to `mu4e-autotask-test--record-call', or nil if it never ran.
@@ -1481,7 +1496,7 @@ would strip CR and reinterpret high bytes."
       (delete-file file))))
 
 (ert-deftest mu4e-autotask-test-msg-content ()
-  "Content accessors return the decoded body of the matching MIME part."
+  "Content accessors return the body of the matching MIME part."
   (mu4e-autotask-test--with-cleanup
     (mu4e-autotask-test--with-mime-parts
         `((:mime-type
@@ -1497,6 +1512,20 @@ would strip CR and reinterpret high bytes."
       (should
        (equal
         (mu4e-autotask-msg-content "text/plain") "plain text")))))
+
+(ert-deftest mu4e-autotask-test-msg-content-returns-bytes ()
+  "Content accessors undo the transfer encoding but not the declared charset."
+  (mu4e-autotask-test--with-cleanup
+    (mu4e-autotask-test--with-mime-parts
+        `((:mime-type
+           "text/plain"
+           :handle
+           ,(mu4e-autotask-test--handle
+             "Apmok=C4=97ti"
+             nil 'quoted-printable "utf-8")))
+      (let ((body (mu4e-autotask-text-content)))
+        (should (equal body (encode-coding-string "Apmokėti" 'utf-8)))
+        (should-not (multibyte-string-p body))))))
 
 (ert-deftest mu4e-autotask-test-msg-content-missing-errors ()
   "Content accessors signal a `user-error' when the MIME type is absent."

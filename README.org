@@ -116,7 +116,10 @@ Reading the current message:
   text/html and text/plain bodies.
 - =(mu4e-autotask-msg-content MIME-TYPE)= :: the body of the first part of a
   given MIME type.  These three signal a =user-error= if the message has no part
-  of the requested type.
+  of the requested type.  They undo the part's transfer encoding but not its
+  charset, returning a unibyte string of its bytes: match it with an ASCII regexp,
+  or =decode-coding-string= it first with the coding system for its Content-Type
+  charset (e.g. ='utf-8=).
 - =(mu4e-autotask-csv-part)= / =(mu4e-autotask-pdf-part)= :: the first CSV / PDF
   attachment part.
 - =(mu4e-autotask-save-csv-part)= / =(mu4e-autotask-save-part-file PART)= :: save
@@ -166,7 +169,7 @@ capture group:
 #+end_src
 
 When the miss path needs to signal rather than message-and-return-nil, hand-roll
-the match instead — here pulling a link out of the decoded plain-text body and
+the match instead — here pulling a link out of the plain-text body and
 raising =user-error= when none is found:
 
 #+begin_src emacs-lisp
