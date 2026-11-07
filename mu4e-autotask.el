@@ -6,6 +6,7 @@
 ;; Author: Laurynas Biveinis <laurynas.biveinis@gmail.com>
 ;; Assisted-by: Claude Code:claude-opus-4-8
 ;; Assisted-by: Claude Code:claude-fable-5
+;; Assisted-by: Claude Code:claude-opus-5-5
 ;; Version: 1.1.0
 ;; URL: https://github.com/laurynas-biveinis/mu4e-autotask
 ;; Package-Requires: ((emacs "29.1"))
