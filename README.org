@@ -135,8 +135,8 @@ Reading the current message:
 
 Acting on the message:
 
-- =(mu4e-autotask-browse-url-matching REGEXP CONTENT &optional DESCRIPTION GROUP)=
-  :: visit with =browse-url= the URL captured by GROUP (default 1) of REGEXP in
+- =(mu4e-autotask-browse-url-matching REGEXP CONTENT &optional DESCRIPTION GROUP)= ::
+  visit with =browse-url= the URL captured by GROUP (default 1) of REGEXP in
   CONTENT, and return it.  Quoted-printable soft line breaks and any bare CR/LF
   are removed, and the =&amp;= entity is decoded to =&=, in the captured URL
   after the match — so a fold is spanned only when REGEXP's own URL character
