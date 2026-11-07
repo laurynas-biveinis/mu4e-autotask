@@ -548,6 +548,17 @@ Bind `mu4e-autotask-test--browsed' to `unset' and the lexical variable
                   (setq reported (apply #'format fmt args)))))
        ,@body)))
 
+(defun mu4e-autotask-test--should-browse-whole (content expected)
+  "Assert that browsing all of single-line CONTENT visits and returns EXPECTED."
+  (mu4e-autotask-test--with-browse-report
+    (should
+     (equal
+      (mu4e-autotask-browse-url-matching
+       "\\(.+\\)" content)
+      expected))
+    (should (equal mu4e-autotask-test--browsed expected))
+    (should (equal reported (concat "Opening " expected)))))
+
 (defmacro mu4e-autotask-test--without-org-gcal (&rest body)
   "Run BODY with org-gcal absent and the accept/confirm/send stand-ins installed.
 `org-gcal-post-at-point' is undefined and `require' fails for org-gcal, while
@@ -1563,14 +1574,84 @@ admits the newline."
       (should
        (equal mu4e-autotask-test--browsed "https://c.gle/AABB")))))
 
-(ert-deftest mu4e-autotask-test-browse-url-matching-decodes-amp ()
-  "`mu4e-autotask-browse-url-matching' decodes the =&amp;= entity in the URL."
-  (let ((mu4e-autotask-test--browsed 'unset))
-    (cl-letf (((symbol-function 'browse-url)
-               #'mu4e-autotask-test--record-browse))
-      (mu4e-autotask-browse-url-matching
-       "\\(https://[^ ]+\\)" "https://x/a&amp;b")
-      (should (equal mu4e-autotask-test--browsed "https://x/a&b")))))
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-strips-url-whitespace
+    ()
+  "A raw tab, and tab, CR and LF from references, are removed after decoding."
+  (mu4e-autotask-test--should-browse-whole
+   "https://x/a&#10;b&#13;c&#9;d&#xA;e\tf" "https://x/abcdef"))
+
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-bare-fold-splitting-amp
+    ()
+  "A bare CR/LF that splits a reference is removed before decoding."
+  (mu4e-autotask-test--with-browse-report
+    (mu4e-autotask-browse-url-matching
+     "href=\\(https://[^>]+\\)>" "href=https://x/a&am\r\np;b>")
+    (should (equal mu4e-autotask-test--browsed "https://x/a&b"))
+    (should (equal reported "Opening https://x/a&b"))))
+
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-raw-tab-splitting-amp
+    ()
+  "A raw tab that splits a reference is removed only after decoding.
+So, as in a browser, the reference stays undecoded."
+  (mu4e-autotask-test--should-browse-whole
+   "https://x/a&am\tp;b" "https://x/a&amp;b"))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-decodes-char-refs
+    ()
+  "`mu4e-autotask-browse-url-matching' decodes character references in the URL.
+Numeric references in decimal and both hex cases, the five named ones, and the
+uppercase forms of four of them."
+  (mu4e-autotask-test--should-browse-whole
+   (concat
+    "https://x/a&amp;b&#61;c&#x3D;d&#x3d;&#X3D;&lt;&gt;&quot;&apos;"
+    "&AMP;&LT;&GT;&QUOT;")
+   "https://x/a&b=c=d==<>\"'&<>\""))
+
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-char-refs-single-pass
+    ()
+  "Each reference is decoded once, so a decoded `&' starts no new reference."
+  (mu4e-autotask-test--should-browse-whole
+   "&#38;amp;&amp;#61;" "&amp;&#61;"))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-char-refs-verbatim
+    ()
+  "A decoded letter keeps its case and a decoded `\\' is no escape."
+  (mu4e-autotask-test--should-browse-whole "&#X6A;&#92;" "j\\"))
+
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-invalid-code-points
+    ()
+  "A reference to an invalid code point becomes U+FFFD, as in HTML.
+The 20-digit one is beyond `max-char', so it would otherwise signal."
+  (mu4e-autotask-test--should-browse-whole
+   "&#0;&#xD800;&#xDFFF;&#x110000;&#99999999999999999999;"
+   (make-string 5 #xFFFD)))
+
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-valid-edge-code-points
+    ()
+  "References to the valid code points next to the invalid ranges decode."
+  (mu4e-autotask-test--should-browse-whole
+   "&#1;&#xD7FF;&#xE000;&#x10FFFF;"
+   (string 1 #xD7FF #xE000 #x10FFFF)))
+
+(ert-deftest mu4e-autotask-test-browse-url-matching-leaves-other-refs
+    ()
+  "Other names, other letter cases and references without `;' stay intact."
+  (mu4e-autotask-test--should-browse-whole
+   "&Amp;&APOS;&Lt;&nbsp;&#x;&#61b&#x3D&amp&#61"
+   "&Amp;&APOS;&Lt;&nbsp;&#x;&#61b&#x3D&amp&#61"))
+
+(ert-deftest
+    mu4e-autotask-test-browse-url-matching-c1-code-points-kept
+    ()
+  "A reference to U+0080-U+009F is never remapped to Windows-1252."
+  (mu4e-autotask-test--should-browse-whole
+   "&#x80;&#159;" (string #x80 #x9F)))
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-group-0 ()
   "`mu4e-autotask-browse-url-matching' honors an explicit GROUP of 0."
@@ -1655,6 +1736,18 @@ empty URL."
     (should (equal reported "Could not find the thing"))))
 
 (ert-deftest
+    mu4e-autotask-test-browse-url-matching-capture-cleaned-away
+    ()
+  "A capture that the cleanup empties takes the miss path."
+  (mu4e-autotask-test--with-browse-report
+    (should
+     (null
+      (mu4e-autotask-browse-url-matching
+       "x\\(.+\\)" "x\t&#9;&#10;&#xD;" "thing")))
+    (should (eq mu4e-autotask-test--browsed 'unset))
+    (should (equal reported "Could not find the thing"))))
+
+(ert-deftest
     mu4e-autotask-test-browse-url-matching-nonparticipating-group
     ()
   "A REGEXP match whose capture group did not participate takes the miss path.
@@ -1668,8 +1761,7 @@ The nil capture must not crash; it falls through to the miss branch."
 
 (ert-deftest mu4e-autotask-test-browse-url-matching-case-sensitive ()
   "Matching is case-sensitive regardless of the ambient `case-fold-search'.
-With `case-fold-search' bound to t, a case-mismatched REGEXP does not match and
-a literal `&AMP;' is left undecoded."
+With `case-fold-search' bound to t, a case-mismatched REGEXP does not match."
   (let ((mu4e-autotask-test--browsed 'unset)
         (case-fold-search t))
     (cl-letf (((symbol-function 'browse-url)
@@ -1680,12 +1772,7 @@ a literal `&AMP;' is left undecoded."
        (null
         (mu4e-autotask-browse-url-matching
          "HTTPS://[^ ]+" "see https://a.b/x" nil 0)))
-      (should (eq mu4e-autotask-test--browsed 'unset))
-      ;; `&AMP;' is not the `&amp;' entity, so it is left intact.
-      (mu4e-autotask-browse-url-matching
-       "\\(https://[^ ]+\\)" "https://x/a&AMP;b")
-      (should
-       (equal mu4e-autotask-test--browsed "https://x/a&AMP;b")))))
+      (should (eq mu4e-autotask-test--browsed 'unset)))))
 
 (ert-deftest mu4e-autotask-test-when-body-matches-runs-action ()
   "`mu4e-autotask-when-body-matches' calls ACTION with MSG on a body match.

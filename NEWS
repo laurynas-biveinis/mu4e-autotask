@@ -1,5 +1,18 @@
 mu4e-autotask NEWS -- history of user-visible changes
 
+* Changes in mu4e-autotask 1.1.0 (unreleased)
+
+** Bug Fixes
+
+*** `mu4e-autotask-browse-url-matching' decodes more character references
+    Besides `&amp;', the captured URL now has `;'-terminated decimal
+    and hexadecimal HTML character references, `&lt;', `&gt;',
+    `&quot;' and `&apos;', and the uppercase `&AMP;', `&LT;', `&GT;'
+    and `&QUOT;' decoded, in a single pass.  An href such as
+    "pay?id&#x3D;7" used to be browsed with the reference intact.
+    Tabs, and CR and LF decoded from references, are then removed, as
+    a browser does.
+
 * Changes in mu4e-autotask 1.0.0 (2026-08-21)
 
 Initial release.

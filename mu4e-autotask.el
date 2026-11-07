@@ -6,7 +6,7 @@
 ;; Author: Laurynas Biveinis <laurynas.biveinis@gmail.com>
 ;; Assisted-by: Claude Code:claude-opus-4-8
 ;; Assisted-by: Claude Code:claude-fable-5
-;; Version: 1.0.0
+;; Version: 1.1.0
 ;; URL: https://github.com/laurynas-biveinis/mu4e-autotask
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: mail
@@ -291,40 +291,89 @@ See `mu4e-autotask-msg-content' for its encoding."
 See `mu4e-autotask-msg-content' for its encoding."
   (mu4e-autotask-msg-content "text/plain"))
 
+(defun mu4e-autotask--char-ref-replacement (ref)
+  "Return the text that the HTML character reference REF stands for.
+The match data must describe REF as matched in
+`mu4e-autotask--decode-char-refs'.  A numeric reference to NUL, a surrogate or
+a code point above U+10FFFF yields U+FFFD, as in HTML.  Unlike HTML, one to
+U+0080-U+009F is never remapped to a Windows-1252 character.  An unsupported
+named reference yields REF itself."
+  (let ((decimal (match-string 1 ref))
+        (hex (match-string 2 ref)))
+    (if (or decimal hex)
+        (let ((code
+               (if decimal
+                   (string-to-number decimal)
+                 (string-to-number hex 16))))
+          (string
+           (if (or (zerop code)
+                   (> code #x10FFFF)
+                   (<= #xD800 code #xDFFF))
+               #xFFFD
+             code)))
+      (pcase (match-string 3 ref)
+        ((or "amp" "AMP") "&")
+        ((or "lt" "LT") "<")
+        ((or "gt" "GT") ">")
+        ((or "quot" "QUOT") "\"")
+        ("apos" "'")
+        (_ ref)))))
+
+(defun mu4e-autotask--decode-char-refs (string)
+  "Decode, in a single pass, the HTML character references in STRING.
+Only those that `mu4e-autotask-browse-url-matching' documents are decoded.
+Unlike HTML, a reference without `;' is never decoded."
+  (replace-regexp-in-string
+   "&\\(?:#\\([0-9]+\\)\\|#[xX]\\([0-9A-Fa-f]+\\)\\|\\([A-Za-z0-9]+\\)\\);"
+   #'mu4e-autotask--char-ref-replacement
+   string
+   t
+   t))
+
 (defun mu4e-autotask-browse-url-matching
     (regexp content &optional description group)
   "Browse the URL captured by REGEXP in CONTENT, and return it.
 Match REGEXP against CONTENT and pass capture GROUP (default 1) to `browse-url'.
-In the captured URL, quoted-printable soft line breaks (a trailing = before a
-newline), any remaining bare CR/LF, and the HTML entity `&amp;' are removed or
-decoded, after the match.  REGEXP can therefore span the folded lines of a raw
-message body only when its own URL character class admits the newline (e.g.
-`[^>]'); the cleanup then repairs the captured fold.  Matching is case-sensitive
-regardless of the ambient `case-fold-search'.  Message \"Opening <url>\" on
-success.  When REGEXP does not match, or its capture group is empty, message
-about the missing DESCRIPTION (default \"URL\") and return nil."
+In the captured URL, after the match, quoted-printable soft line breaks (a
+trailing = before a newline) and any remaining bare CR/LF are removed;
+`;'-terminated decimal and hexadecimal HTML character references, the named
+references `&amp;', `&lt;', `&gt;', `&quot;' and `&apos;', and the uppercase
+`&AMP;', `&LT;', `&GT;' and `&QUOT;' are decoded; then every tab, CR and LF,
+decoded ones included, is removed, as a browser does.  REGEXP can therefore
+span the folded lines of a raw message body only when its own URL character
+class admits the newline \(e.g. `[^>]'); the cleanup then repairs the captured
+fold.  Unlike HTML, a reference without `;' is never decoded, and one to
+U+0080-U+009F is never remapped to a Windows-1252 character.  Matching is
+case-sensitive regardless of the ambient `case-fold-search'.  Message
+\"Opening <url>\" on success.  When REGEXP does not match, or its capture group
+is empty or becomes empty after the cleanup, message about the missing
+DESCRIPTION (default \"URL\") and return nil."
   (save-match-data
-    ;; Bind `case-fold-search' so URL matching and the case-sensitive `&amp;'
-    ;; decode do not depend on the calling buffer's value.
+    ;; Bind `case-fold-search' so URL matching does not depend on the calling
+    ;; buffer's value.
     (let*
         ((case-fold-search nil)
          ;; Bind the raw capture first: a non-participating GROUP yields nil,
          ;; which must short-circuit before `replace-regexp-in-string' (which
-         ;; rejects nil).  The newline cleanups nest inner-to-outer: strip the
+         ;; rejects nil).  The cleanups nest inner-to-outer: strip the
          ;; quoted-printable soft break first, then any bare CR/LF, then decode
-         ;; `&amp;'.  Order matters -- a bare-newline strip ahead of the soft
-         ;; break would orphan its `='.
+         ;; character references, then strip tab, CR and LF.  Order matters --
+         ;; a bare-newline strip ahead of the soft break would orphan its `='.
+         ;; The first CR/LF strip repairs a fold even inside a reference.  The
+         ;; last strip follows decoding, as in a browser: it also removes
+         ;; decoded tab, CR and LF, and a raw tab still splits a reference.
          (raw
           (and (string-match regexp content)
                (match-string (or group 1) content)))
          (url
           (and raw
                (replace-regexp-in-string
-                "&amp;" "&"
-                (replace-regexp-in-string
-                 "[\r\n]"
-                 ""
-                 (replace-regexp-in-string "=\r?\n" "" raw))))))
+                "[\t\r\n]" ""
+                (mu4e-autotask--decode-char-refs
+                 (replace-regexp-in-string
+                  "[\r\n]"
+                  ""
+                  (replace-regexp-in-string "=\r?\n" "" raw)))))))
       (if (and url (not (string-empty-p url)))
           (progn
             (message "Opening %s" url)

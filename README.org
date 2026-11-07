@@ -137,12 +137,18 @@ Acting on the message:
 
 - =(mu4e-autotask-browse-url-matching REGEXP CONTENT &optional DESCRIPTION GROUP)= ::
   visit with =browse-url= the URL captured by GROUP (default 1) of REGEXP in
-  CONTENT, and return it.  Quoted-printable soft line breaks and any bare CR/LF
-  are removed, and the =&amp;= entity is decoded to =&=, in the captured URL
-  after the match — so a fold is spanned only when REGEXP's own URL character
-  class admits the newline (e.g. =[^>]=).  Matching is case-sensitive.  Messages
-  =Opening <url>= on success; on no match, or when the capture group is empty, it
-  messages about the missing DESCRIPTION (default ="URL"=) and returns nil.
+  CONTENT, and return it.  In the captured URL, after the match, quoted-printable
+  soft line breaks and any bare CR/LF are removed; =;=-terminated decimal and
+  hexadecimal HTML character references, the named references =&amp;=, =&lt;=,
+  =&gt;=, =&quot;= and =&apos;=, and the uppercase =&AMP;=, =&LT;=, =&GT;= and
+  =&QUOT;= are decoded; then every tab, CR and LF, decoded ones included, is
+  removed, as a browser does.  A fold is therefore spanned only when REGEXP's
+  own URL character class admits the newline (e.g. =[^>]=).  Unlike in HTML, a
+  reference without =;= is never decoded, and one to U+0080–U+009F is never
+  remapped to a Windows-1252 character.  Matching is case-sensitive.  Messages
+  =Opening <url>= on success; on no match, or when the capture group is empty or
+  becomes empty after the cleanup, it messages about the missing DESCRIPTION
+  (default ="URL"=) and returns nil.
 - =(mu4e-autotask-when-body-matches MSG REGEXP ACTION &optional SKIP-MESSAGE)= ::
   call =ACTION= with =MSG= when =REGEXP= matches the raw message of =MSG=
   (headers and body), returning its value; otherwise message =SKIP-MESSAGE= (when
