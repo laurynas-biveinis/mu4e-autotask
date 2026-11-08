@@ -47,7 +47,7 @@ set -eu -o pipefail
 readonly SHELL_FILES=(check.sh)
 # Explicitly list markdown files to lint, excluding uncommitted LLM
 # scratch/memory files.
-readonly MARKDOWN_FILES=(CLAUDE.md)
+readonly MARKDOWN_FILES=(AGENTS.md)
 # Test files are excluded from the Eask package file set, so the no-argument
 # eask format/lint commands below do not see them; pass them explicitly.
 readonly ELISP_TEST_FILES=(mu4e-autotask-test.el)
