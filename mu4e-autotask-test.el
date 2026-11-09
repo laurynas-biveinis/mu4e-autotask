@@ -1223,11 +1223,11 @@ not characters."
             (mu4e-autotask-test--transformed-msg
              "SUMMARY:Team meeting" (concat "SUMMARY:" summary))))
       (mu4e-autotask-test--accept-recording-content msg)
-      ;; gnus-icalendar titles the reply "Accepted: <summary>"; unfolding
-      ;; must reassemble the long summary intact.
+      ;; The status prefix varies between Gnus versions; unfolding must
+      ;; reassemble the long summary intact either way.
       (should
        (string-match-p
-        (concat "^SUMMARY:Accepted: " summary "$")
+        (concat "^SUMMARY:\\(?:Accepted: \\)?" summary "$")
         (mu4e-autotask-test--unfolded-reply))))))
 
 (ert-deftest mu4e-autotask-test-icalendar-reply-long-line-round-trips
