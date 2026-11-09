@@ -718,6 +718,33 @@ the part's charset."
           (forward-line 0))))
     (current-buffer)))
 
+(defun mu4e-autotask--icalendar-build-reply (handle event status)
+  "Return the iTIP STATUS reply text to the invitation EVENT, or nil.
+HANDLE is the text/calendar MIME handle EVENT was parsed from.  Emacs 31's
+reply builder calls `string-match' on SUMMARY although it is optional, so
+when EVENT has none, supply an empty one in the decoded copy of HANDLE and
+strip it from the reply."
+  (let ((gnus-icalendar-additional-identities
+         (mu4e-personal-addresses 'no-regexp))
+        (summary-missing (null (gnus-icalendar-event:summary event))))
+    (gnus-icalendar-with-decoded-handle
+     handle
+     (when summary-missing
+       (goto-char (point-min))
+       (let ((case-fold-search t))
+         (re-search-forward "^BEGIN:VEVENT\r?\n"))
+       (insert "SUMMARY:\n"))
+     (when-let* ((built
+                  (gnus-icalendar-event-reply-from-buffer
+                   (current-buffer)
+                   status
+                   (gnus-icalendar-identities))))
+       (if summary-missing
+           ;; Builders render the placeholder as "SUMMARY:" (Emacs 31) or
+           ;; "SUMMARY:<Status>: " (older).
+           (replace-regexp-in-string "^SUMMARY:.*\n" "" built t t)
+         built)))))
+
 ;; This intentionally parallels mu4e's own `mu4e-icalendar-reply' rather
 ;; than delegating to it: loading mu4e-icalendar installs global advice on
 ;; `gnus-icalendar-reply'; its gnus-icalendar org-capture/diary side effects
@@ -728,13 +755,8 @@ the part's charset."
   "Compose the iTIP STATUS reply to the invitation EVENT from MSG.
 HANDLE is the text/calendar MIME handle the reply is built from.  Leave the
 compose buffer current and return the organizer address the reply goes to."
-  (let* ((gnus-icalendar-additional-identities
-          (mu4e-personal-addresses 'no-regexp))
-         (reply
-          (gnus-icalendar-with-decoded-handle
-           handle
-           (gnus-icalendar-event-reply-from-buffer
-            (current-buffer) status (gnus-icalendar-identities))))
+  (let* ((reply
+          (mu4e-autotask--icalendar-build-reply handle event status))
          (organizer (mu4e-autotask--icalendar-organizer msg event))
          (message-signature nil)
          (message-cite-function #'mu4e-message-cite-nothing))

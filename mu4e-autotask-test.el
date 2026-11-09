@@ -1331,6 +1331,62 @@ mark each continuation with exactly one leading space, and lose nothing."
         "^\\* (no title)\n:PROPERTIES:$"
         mu4e-autotask-test--posted)))))
 
+(defun mu4e-autotask-test--no-summary-msg (&rest replacements)
+  "Return a fake REQUEST message whose event has no SUMMARY.
+Each of REPLACEMENTS is a (FROM . TO) pair applied in order to the
+iCalendar text with `string-replace'."
+  (let ((ics
+         (string-replace
+          "SUMMARY:Team meeting\n"
+          ""
+          (mu4e-autotask-test--invite-ics "REQUEST"))))
+    (dolist (replacement replacements)
+      (setq ics
+            (string-replace (car replacement) (cdr replacement) ics)))
+    (mu4e-autotask-test--raw-invite-msg
+     (concat
+      (format mu4e-autotask-test--invite-headers-format "REQUEST")
+      ics))))
+
+(defun mu4e-autotask-test--should-reply-without-summary (msg)
+  "Accept MSG and assert that the reply accepts and carries no SUMMARY."
+  (mu4e-autotask-test--accept-recording-content msg)
+  (let ((reply (mu4e-autotask-test--unfolded-reply)))
+    (should (string-match-p "PARTSTAT=ACCEPTED" reply))
+    (should-not (string-match-p "^SUMMARY" reply))))
+
+(ert-deftest
+    mu4e-autotask-test-icalendar-no-summary-reply-omits-summary
+    ()
+  "The reply to an invitation without SUMMARY carries no SUMMARY either."
+  (mu4e-autotask-test--with-rsvp
+    (mu4e-autotask-test--should-reply-without-summary
+     (mu4e-autotask-test--no-summary-msg))))
+
+(ert-deftest
+    mu4e-autotask-test-icalendar-no-summary-reply-mixed-line-endings
+    ()
+  "An invitation without SUMMARY that mixes CRLF and LF endings is answered.
+Decoding keeps the CRs of mixed endings.  Only the pre-Emacs 31 parser
+accepts such an invitation."
+  (skip-unless (not (featurep 'icalendar-parser)))
+  (mu4e-autotask-test--with-rsvp
+    (mu4e-autotask-test--should-reply-without-summary
+     (mu4e-autotask-test--no-summary-msg
+      '("\n" . "\r\n") '("PRODID:Test\r\n" . "PRODID:Test\n")))))
+
+(ert-deftest
+    mu4e-autotask-test-icalendar-no-summary-reply-lowercase-component
+    ()
+  "An invitation without SUMMARY and with a lowercase VEVENT is answered.
+This holds with case folding off.  Only the Emacs 31 parser accepts a
+lowercase component name."
+  (skip-unless (featurep 'icalendar-parser))
+  (mu4e-autotask-test--with-rsvp
+    (let ((case-fold-search nil))
+      (mu4e-autotask-test--should-reply-without-summary
+       (mu4e-autotask-test--no-summary-msg '("VEVENT" . "vevent"))))))
+
 (ert-deftest
     mu4e-autotask-test-icalendar-event-respects-narrowed-buffer
     ()

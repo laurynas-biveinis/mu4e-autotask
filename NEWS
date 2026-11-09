@@ -23,6 +23,11 @@ mu4e-autotask NEWS -- history of user-visible changes
     Tabs, and CR and LF decoded from references, are then removed, as
     a browser does.
 
+*** Invitations without SUMMARY can be answered on Emacs 31
+    Accepting, declining or tentatively accepting a calendar
+    invitation that has no SUMMARY used to fail on Emacs 31 with a
+    wrong-type-argument error from the Gnus reply builder.
+
 * Changes in mu4e-autotask 1.0.0 (2026-08-21)
 
 Initial release.
