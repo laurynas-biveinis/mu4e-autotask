@@ -90,7 +90,9 @@ that receives the message plist and returns a cons =(ORG-FILE . CALENDAR-ID)=:
 the org-gcal file the event entry is appended to, and the Google calendar id
 (the calendar's email-address form) it is posted to.  Return nil to skip event
 creation for that message.  org-gcal is loaded only when this fires; it is not
-a declared package dependency.  Declined invitations never create events.
+a declared package dependency.  Declined invitations never create events.  The
+event entry is titled after the invitation's =SUMMARY=, falling back to the
+message subject, or to =(no title)= if both are blank.
 
 #+begin_src emacs-lisp
 (setq mu4e-autotask-icalendar-event-target-function
